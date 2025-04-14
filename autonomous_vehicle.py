@@ -2,7 +2,7 @@ import sys
 import os
 
 # Add CARLA Python API to the Python path
-carla_path = r"C:\CARLA_0.9.14\PythonAPI\carla"
+carla_path = r"C:\carla\PythonAPI\carla"
 if os.path.exists(carla_path):
     sys.path.append(carla_path)
 else:
@@ -13,6 +13,7 @@ else:
 import carla
 import random
 import time
+import math
 
 def main():
     try:
@@ -52,8 +53,8 @@ def main():
         vehicle_transform = vehicle.get_transform()
         # Move the spectator behind the vehicle
         spectator_transform = carla.Transform(
-            vehicle_transform.location + carla.Location(x=-10, z=3),
-            carla.Rotation(pitch=-20, yaw=vehicle_transform.rotation.yaw)
+            vehicle_transform.location + carla.Location(x=-15, z=5),
+            carla.Rotation(pitch=-15, yaw=vehicle_transform.rotation.yaw)
         )
         spectator.set_transform(spectator_transform)
 
@@ -65,17 +66,27 @@ def main():
             location = vehicle.get_location()
             transform = vehicle.get_transform()
             
-            print(f"Vehicle Location: {location}")
-            print(f"Vehicle Transform: {transform}")
+            # Calculate the camera position based on vehicle's movement
+            vehicle_velocity = vehicle.get_velocity()
+            speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)
             
-            # Update spectator position to follow the vehicle
+            # Adjust camera distance based on speed
+            distance = 15 + min(speed, 10)  # Base distance + speed factor
+            height = 5 + min(speed/2, 3)    # Base height + speed factor
+            
+            # Update spectator position to follow the vehicle smoothly
             spectator_transform = carla.Transform(
-                transform.location + carla.Location(x=-10, z=3),
-                carla.Rotation(pitch=-20, yaw=transform.rotation.yaw)
+                transform.location + carla.Location(x=-distance, z=height),
+                carla.Rotation(pitch=-15, yaw=transform.rotation.yaw)
             )
             spectator.set_transform(spectator_transform)
             
-            time.sleep(1.0)
+            # Print vehicle info less frequently
+            if int(time.time()) % 2 == 0:  # Print every 2 seconds
+                print(f"Vehicle Location: {location}")
+                print(f"Vehicle Speed: {speed*3.6:.2f} km/h")  # Convert m/s to km/h
+            
+            time.sleep(0.1)  # Reduced sleep time for smoother camera movement
 
     except KeyboardInterrupt:
         print("\nDestroying actors...")
