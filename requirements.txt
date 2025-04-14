@@ -1,0 +1,5 @@
+carla==0.9.14
+numpy>=1.19.0
+pygame>=2.0.0
+opencv-python>=4.5.0
+matplotlib>=3.3.0 
