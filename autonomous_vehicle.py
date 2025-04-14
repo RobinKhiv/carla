@@ -43,6 +43,17 @@ def main():
         vehicle = world.spawn_actor(vehicle_bp, spawn_point)
         print(f"Vehicle spawned: {vehicle}")
 
+        # Add a debug camera to the vehicle
+        camera_bp = blueprint_library.find('sensor.camera.rgb')
+        camera_bp.set_attribute('image_size_x', '800')
+        camera_bp.set_attribute('image_size_y', '600')
+        camera_bp.set_attribute('fov', '90')
+        
+        # Attach camera to the vehicle
+        camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
+        camera = world.spawn_actor(camera_bp, camera_transform, attach_to=vehicle)
+        print("Debug camera attached to vehicle")
+
         # Set the vehicle in autopilot mode
         vehicle.set_autopilot(True)
         print("Autopilot enabled")
@@ -103,16 +114,21 @@ def main():
             if int(time.time()) % 2 == 0:
                 print(f"Vehicle Location: {location}")
                 print(f"Vehicle Speed: {speed*3.6:.2f} km/h")
+                print(f"Vehicle Rotation: {transform.rotation}")
             
             time.sleep(0.1)
 
     except KeyboardInterrupt:
         print("\nDestroying actors...")
+        if 'camera' in locals():
+            camera.destroy()
         if 'vehicle' in locals():
             vehicle.destroy()
         print("Done.")
     except Exception as e:
         print(f"An error occurred: {e}")
+        if 'camera' in locals():
+            camera.destroy()
         if 'vehicle' in locals():
             vehicle.destroy()
 
