@@ -51,10 +51,10 @@ def main():
         spectator = world.get_spectator()
         # Get the vehicle's transform
         vehicle_transform = vehicle.get_transform()
-        # Move the spectator behind the vehicle
+        # Move the spectator behind the vehicle with a better viewing angle
         spectator_transform = carla.Transform(
-            vehicle_transform.location + carla.Location(x=-15, z=5),
-            carla.Rotation(pitch=-15, yaw=vehicle_transform.rotation.yaw)
+            vehicle_transform.location + carla.Location(x=0, y=-10, z=3),
+            carla.Rotation(pitch=-10, yaw=0)
         )
         spectator.set_transform(spectator_transform)
 
@@ -71,13 +71,25 @@ def main():
             speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)
             
             # Adjust camera distance based on speed
-            distance = 15 + min(speed, 10)  # Base distance + speed factor
-            height = 5 + min(speed/2, 3)    # Base height + speed factor
+            distance = 10 + min(speed, 5)  # Base distance + speed factor
+            height = 3 + min(speed/2, 2)   # Base height + speed factor
             
             # Update spectator position to follow the vehicle smoothly
+            # Calculate the vehicle's forward vector
+            yaw = math.radians(transform.rotation.yaw)
+            forward_vector = carla.Location(
+                x=math.sin(yaw),
+                y=-math.cos(yaw),
+                z=0
+            )
+            
+            # Position camera behind the vehicle
+            camera_location = transform.location + forward_vector * distance
+            camera_location.z = transform.location.z + height
+            
             spectator_transform = carla.Transform(
-                transform.location + carla.Location(x=-distance, z=height),
-                carla.Rotation(pitch=-15, yaw=transform.rotation.yaw)
+                camera_location,
+                carla.Rotation(pitch=-10, yaw=transform.rotation.yaw)
             )
             spectator.set_transform(spectator_transform)
             
