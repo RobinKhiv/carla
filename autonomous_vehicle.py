@@ -67,15 +67,15 @@ def main():
             # Calculate the offset vector based on vehicle's rotation
             # Note: In CARLA, yaw=0 points to the right, so we need to adjust our calculations
             offset = carla.Location(
-                x=15 * math.cos(yaw),   # 15 meters behind the vehicle
+                x=-15 * math.cos(yaw),  # 15 meters behind the vehicle (negative x)
                 y=15 * math.sin(yaw),   # 15 meters behind the vehicle
-                z=8                     # 8 meters above the vehicle
+                z=4                     # 4 meters above the vehicle (reduced height)
             )
             
             # Set camera position and rotation
             camera_location = transform.location + offset
             camera_rotation = carla.Rotation(
-                pitch=-15,  # Look down at 15 degrees
+                pitch=-10,  # Look down at 10 degrees (reduced angle)
                 yaw=transform.rotation.yaw  # Match vehicle's yaw
             )
             
