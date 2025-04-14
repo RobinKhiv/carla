@@ -64,19 +64,36 @@ def main():
             
             # Calculate the camera position based on vehicle's current position and rotation
             yaw = math.radians(transform.rotation.yaw)
+            
             # Calculate the offset vector based on vehicle's rotation
-            # Note: In CARLA, yaw=0 points to the right, so we need to adjust our calculations
+            # Keep the camera at a fixed angle relative to the vehicle's movement
             offset = carla.Location(
-                x=-15 * math.cos(yaw),  # 15 meters behind the vehicle (negative x)
+                x=-15 * math.cos(yaw),  # 15 meters behind the vehicle
                 y=15 * math.sin(yaw),   # 15 meters behind the vehicle
-                z=4                     # 4 meters above the vehicle (reduced height)
+                z=4                     # 4 meters above the vehicle
             )
             
-            # Set camera position and rotation
+            # Set camera position
             camera_location = transform.location + offset
+            
+            # Calculate the camera's target point (slightly ahead of the vehicle)
+            target_location = transform.location + carla.Location(
+                x=5 * math.cos(yaw),  # 5 meters ahead of the vehicle
+                y=5 * math.sin(yaw),  # 5 meters ahead of the vehicle
+                z=0                   # Same height as vehicle
+            )
+            
+            # Calculate the direction vector from camera to target
+            direction = target_location - camera_location
+            
+            # Calculate the yaw and pitch angles for the camera
+            yaw = math.degrees(math.atan2(direction.y, direction.x))
+            pitch = math.degrees(math.atan2(direction.z, math.sqrt(direction.x**2 + direction.y**2)))
+            
+            # Set camera rotation
             camera_rotation = carla.Rotation(
-                pitch=-10,  # Look down at 10 degrees (reduced angle)
-                yaw=transform.rotation.yaw  # Match vehicle's yaw
+                pitch=pitch - 10,  # Look slightly down at the vehicle
+                yaw=yaw           # Look at the vehicle
             )
             
             # Update spectator position
