@@ -28,15 +28,34 @@ def main():
 
         # Get the map's spawn points
         spawn_points = world.get_map().get_spawn_points()
+        
+        # Choose a specific spawn point (the first one is usually in a good location)
+        spawn_point = spawn_points[0]
+        print(f"Spawning vehicle at: {spawn_point.location}")
 
-        # Choose a vehicle blueprint
-        vehicle_bp = random.choice(blueprint_library.filter('vehicle.*.*'))
+        # Choose a vehicle blueprint (let's use a specific vehicle for visibility)
+        vehicle_bp = blueprint_library.find('vehicle.tesla.model3')
+        if vehicle_bp is None:
+            vehicle_bp = random.choice(blueprint_library.filter('vehicle.*.*'))
 
-        # Spawn the vehicle at a random spawn point
-        vehicle = world.spawn_actor(vehicle_bp, random.choice(spawn_points))
+        # Spawn the vehicle
+        vehicle = world.spawn_actor(vehicle_bp, spawn_point)
+        print(f"Vehicle spawned: {vehicle}")
 
         # Set the vehicle in autopilot mode
         vehicle.set_autopilot(True)
+        print("Autopilot enabled")
+
+        # Set up spectator camera
+        spectator = world.get_spectator()
+        # Get the vehicle's transform
+        vehicle_transform = vehicle.get_transform()
+        # Move the spectator behind the vehicle
+        spectator_transform = carla.Transform(
+            vehicle_transform.location + carla.Location(x=-10, z=3),
+            carla.Rotation(pitch=-20, yaw=vehicle_transform.rotation.yaw)
+        )
+        spectator.set_transform(spectator_transform)
 
         print("Vehicle spawned and autopilot enabled. Press Ctrl+C to exit.")
 
@@ -48,6 +67,13 @@ def main():
             
             print(f"Vehicle Location: {location}")
             print(f"Vehicle Transform: {transform}")
+            
+            # Update spectator position to follow the vehicle
+            spectator_transform = carla.Transform(
+                transform.location + carla.Location(x=-10, z=3),
+                carla.Rotation(pitch=-20, yaw=transform.rotation.yaw)
+            )
+            spectator.set_transform(spectator_transform)
             
             time.sleep(1.0)
 
