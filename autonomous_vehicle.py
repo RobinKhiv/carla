@@ -1,3 +1,15 @@
+import sys
+import os
+
+# Add CARLA Python API to the Python path
+carla_path = r"C:\CARLA_0.9.14\PythonAPI\carla"
+if os.path.exists(carla_path):
+    sys.path.append(carla_path)
+else:
+    print(f"Error: CARLA path not found at {carla_path}")
+    print("Please make sure CARLA is installed and update the carla_path variable")
+    sys.exit(1)
+
 import carla
 import random
 import time
