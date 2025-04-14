@@ -47,23 +47,8 @@ def main():
         vehicle.set_autopilot(True)
         print("Autopilot enabled")
 
-        # Set up spectator camera with a fixed position
+        # Set up spectator camera
         spectator = world.get_spectator()
-        # Get the vehicle's initial location
-        vehicle_location = vehicle.get_location()
-        
-        # Set a fixed camera position that's guaranteed to see the vehicle
-        camera_location = carla.Location(
-            x=vehicle_location.x,
-            y=vehicle_location.y - 20,  # 20 meters behind the vehicle
-            z=vehicle_location.z + 10   # 10 meters above the vehicle
-        )
-        
-        # Set camera rotation to look at the vehicle
-        camera_rotation = carla.Rotation(pitch=-20, yaw=0)
-        
-        # Apply the transform
-        spectator.set_transform(carla.Transform(camera_location, camera_rotation))
         
         print("Vehicle spawned and autopilot enabled. Press Ctrl+C to exit.")
 
@@ -76,6 +61,25 @@ def main():
             # Calculate vehicle speed
             vehicle_velocity = vehicle.get_velocity()
             speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)
+            
+            # Calculate the camera position based on vehicle's current position and rotation
+            yaw = math.radians(transform.rotation.yaw)
+            # Calculate the offset vector based on vehicle's rotation
+            offset = carla.Location(
+                x=-15 * math.sin(yaw),  # 15 meters behind the vehicle
+                y=15 * math.cos(yaw),   # 15 meters behind the vehicle
+                z=5                     # 5 meters above the vehicle
+            )
+            
+            # Set camera position and rotation
+            camera_location = transform.location + offset
+            camera_rotation = carla.Rotation(
+                pitch=-20,  # Look down at 20 degrees
+                yaw=transform.rotation.yaw  # Match vehicle's yaw
+            )
+            
+            # Update spectator position
+            spectator.set_transform(carla.Transform(camera_location, camera_rotation))
             
             # Print vehicle info every 2 seconds
             if int(time.time()) % 2 == 0:
