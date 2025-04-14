@@ -1,65 +1,107 @@
-# CARLA Autonomous Vehicle Project (Windows)
+# Autonomous Vehicle Simulation with Ethical Decision Making
 
-This project demonstrates basic autonomous vehicle functionality using the CARLA simulator on Windows.
+This project implements an autonomous vehicle simulation using the CARLA simulator, focusing on ethical decision-making in complex driving scenarios. The system incorporates various sensors, AI decision-making, and an ethical engine to ensure safe and morally sound vehicle behavior.
 
-## Prerequisites
+## Project Structure
 
-1. Install Visual Studio Build Tools:
-   - Download from [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
-   - Run the installer
-   - Select "Desktop development with C++"
-   - Complete the installation
+```
+.
+├── src/
+│   ├── simulation/
+│   │   └── carla_simulator.py    # Main simulation class
+│   ├── sensors/
+│   │   └── sensor_manager.py     # Manages vehicle sensors
+│   ├── ai/
+│   │   └── decision_maker.py     # AI decision-making system
+│   ├── ethics/
+│   │   └── ethical_engine.py     # Ethical decision-making system
+│   └── utils/
+│       └── sensor_utils.py       # Sensor data processing utilities
+├── requirements.txt              # Project dependencies
+└── README.md                    # This file
+```
 
-2. Install CARLA Simulator:
-   - Download CARLA 0.9.14 from the [official website](https://github.com/carla-simulator/carla/releases/tag/0.9.14)
-   - Extract the downloaded file to a location of your choice (e.g., `C:\CARLA_0.9.14`)
-   - Run CarlaUE4.exe from the extracted folder
+## Features
 
-3. Install Python Dependencies:
+- **Multi-sensor Integration**: Combines data from RGB cameras, LiDAR, radar, and other sensors
+- **Real-time Decision Making**: Processes sensor data to make driving decisions
+- **Ethical Framework**: Implements ethical decision-making for complex scenarios
+- **Risk Assessment**: Evaluates and responds to potential hazards
+- **Smooth Vehicle Control**: Ensures comfortable and safe vehicle movement
+
+## Requirements
+
+- Python 3.7+
+- CARLA Simulator 0.9.13
+- Dependencies listed in `requirements.txt`
+
+## Installation
+
+1. Install CARLA 0.9.13:
+   - Download from [CARLA's official website](https://carla.org/)
+   - Extract to a directory (e.g., `C:\carla`)
+
+2. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. Install CARLA Python API:
-   - Navigate to the PythonAPI/carla folder in your CARLA installation:
-     ```bash
-     cd C:\CARLA_0.9.14\PythonAPI\carla
-     ```
-   - Install the requirements:
-     ```bash
-     pip install -r requirements.txt
-     ```
-   - Install the Python API in editable mode:
-     ```bash
-     python -m pip install -e .
-     ```
+3. Add CARLA Python API to your Python path:
+   - Set the `carla_path` variable in `src/simulation/carla_simulator.py` to point to your CARLA installation's Python API
 
 ## Usage
 
-1. Start the CARLA server by running CarlaUE4.exe
-2. Run the autonomous vehicle script:
+1. Start the CARLA server:
    ```bash
-   python autonomous_vehicle.py
+   # Windows
+   C:\carla\CarlaUE4.exe
+
+   # Linux
+   ./CarlaUE4.sh
    ```
 
-## Features
+2. Run the simulation:
+   ```bash
+   python -m src.simulation.carla_simulator
+   ```
 
-- Connects to CARLA server
-- Spawns a random vehicle
-- Enables autopilot mode
-- Prints vehicle location and transform data
-- Graceful error handling and cleanup
+## Ethical Decision Making
 
-## Notes
+The system implements an ethical framework that prioritizes:
+1. Pedestrian safety (highest priority)
+2. Passenger safety
+3. Property damage (lowest priority)
 
-- Make sure the CARLA server is running before starting the script
-- The script connects to localhost:2000 by default
-- Press Ctrl+C to stop the script and clean up the vehicle
-- The script includes error handling to ensure proper cleanup of resources
+The ethical engine evaluates decisions based on:
+- Distance to pedestrians
+- Risk assessment
+- Potential harm to different parties
+- Traffic rules and regulations
 
-## Next Steps
+## Development
 
-- Add sensor configuration (cameras, LIDAR, etc.)
-- Implement custom autonomous driving logic
-- Add traffic and pedestrian simulation
-- Implement collision detection and avoidance 
+The project is organized into several key components:
+
+1. **Simulation**: Handles the CARLA environment and vehicle control
+2. **Sensors**: Manages data collection from various vehicle sensors
+3. **AI**: Implements decision-making algorithms
+4. **Ethics**: Handles ethical considerations in decision-making
+5. **Utils**: Provides utility functions for data processing
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgments
+
+- CARLA Simulator Team
+- Contributors to the open-source community
+- Research papers and publications in autonomous vehicle ethics 
