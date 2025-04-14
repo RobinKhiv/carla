@@ -47,17 +47,24 @@ def main():
         vehicle.set_autopilot(True)
         print("Autopilot enabled")
 
-        # Set up spectator camera
+        # Set up spectator camera with a fixed position
         spectator = world.get_spectator()
-        # Get the vehicle's transform
-        vehicle_transform = vehicle.get_transform()
-        # Move the spectator behind the vehicle with a better viewing angle
-        spectator_transform = carla.Transform(
-            vehicle_transform.location + carla.Location(x=0, y=-10, z=3),
-            carla.Rotation(pitch=-10, yaw=0)
+        # Get the vehicle's initial location
+        vehicle_location = vehicle.get_location()
+        
+        # Set a fixed camera position that's guaranteed to see the vehicle
+        camera_location = carla.Location(
+            x=vehicle_location.x,
+            y=vehicle_location.y - 20,  # 20 meters behind the vehicle
+            z=vehicle_location.z + 10   # 10 meters above the vehicle
         )
-        spectator.set_transform(spectator_transform)
-
+        
+        # Set camera rotation to look at the vehicle
+        camera_rotation = carla.Rotation(pitch=-20, yaw=0)
+        
+        # Apply the transform
+        spectator.set_transform(carla.Transform(camera_location, camera_rotation))
+        
         print("Vehicle spawned and autopilot enabled. Press Ctrl+C to exit.")
 
         # Keep the script running
@@ -66,39 +73,16 @@ def main():
             location = vehicle.get_location()
             transform = vehicle.get_transform()
             
-            # Calculate the camera position based on vehicle's movement
+            # Calculate vehicle speed
             vehicle_velocity = vehicle.get_velocity()
             speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)
             
-            # Adjust camera distance based on speed
-            distance = 10 + min(speed, 5)  # Base distance + speed factor
-            height = 3 + min(speed/2, 2)   # Base height + speed factor
-            
-            # Update spectator position to follow the vehicle smoothly
-            # Calculate the vehicle's forward vector
-            yaw = math.radians(transform.rotation.yaw)
-            forward_vector = carla.Location(
-                x=math.sin(yaw),
-                y=-math.cos(yaw),
-                z=0
-            )
-            
-            # Position camera behind the vehicle
-            camera_location = transform.location + forward_vector * distance
-            camera_location.z = transform.location.z + height
-            
-            spectator_transform = carla.Transform(
-                camera_location,
-                carla.Rotation(pitch=-10, yaw=transform.rotation.yaw)
-            )
-            spectator.set_transform(spectator_transform)
-            
-            # Print vehicle info less frequently
-            if int(time.time()) % 2 == 0:  # Print every 2 seconds
+            # Print vehicle info every 2 seconds
+            if int(time.time()) % 2 == 0:
                 print(f"Vehicle Location: {location}")
-                print(f"Vehicle Speed: {speed*3.6:.2f} km/h")  # Convert m/s to km/h
+                print(f"Vehicle Speed: {speed*3.6:.2f} km/h")
             
-            time.sleep(0.1)  # Reduced sleep time for smoother camera movement
+            time.sleep(0.1)
 
     except KeyboardInterrupt:
         print("\nDestroying actors...")
