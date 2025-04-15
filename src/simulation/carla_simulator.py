@@ -1163,9 +1163,10 @@ class CarlaSimulator:
         elif abs(angle) > 15.0:  # Increased from 10.0
             target_velocity *= 0.9  # Increased from 0.8 for less aggressive slowing
             
-        # Check for pedestrians with less aggressive slowing
+        # Check for obstacles with different handling for different types
         min_speed = 5.0  # Minimum speed in km/h
         for actor in self.world.get_actors():
+            # Handle pedestrians
             if actor.type_id.startswith('walker.pedestrian'):
                 distance = actor.get_location().distance(vehicle_location)
                 if distance < 15.0:  # Reduced from 20.0 for more focused detection
@@ -1176,6 +1177,25 @@ class CarlaSimulator:
                         target_velocity = max(min_speed, target_velocity * 0.8)  # Reduced from 0.7
                     else:  # Far but detected
                         target_velocity = max(min_speed, target_velocity * 0.9)  # Reduced from 0.8
+                    break
+            # Handle parked cars differently
+            elif actor.type_id.startswith('vehicle.') and actor != self.vehicle:
+                distance = actor.get_location().distance(vehicle_location)
+                if distance < 10.0:  # Shorter detection range for parked cars
+                    # Check if the car is moving (parked cars have very low velocity)
+                    velocity = actor.get_velocity().length()
+                    if velocity < 0.1:  # Consider it parked if velocity is very low
+                        # Less aggressive speed reduction for parked cars
+                        if distance < 5.0:  # Very close
+                            target_velocity = max(min_speed, target_velocity * 0.8)  # Less reduction than for pedestrians
+                        else:  # Moderately close
+                            target_velocity = max(min_speed, target_velocity * 0.9)  # Minimal reduction
+                    else:  # Moving vehicle
+                        # More aggressive reduction for moving vehicles
+                        if distance < 5.0:
+                            target_velocity = max(min_speed, target_velocity * 0.6)
+                        elif distance < 10.0:
+                            target_velocity = max(min_speed, target_velocity * 0.7)
                     break
         
         # Calculate throttle and brake with more aggressive acceleration
