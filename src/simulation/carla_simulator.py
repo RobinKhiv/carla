@@ -280,18 +280,9 @@ class CarlaSimulator:
             vehicle_transform = self.vehicle.get_transform()
             
             # Calculate camera position (behind and above the vehicle)
-            # Get vehicle's forward vector
-            yaw = math.radians(vehicle_transform.rotation.yaw)
-            forward_vector = carla.Location(
-                x=math.cos(yaw),
-                y=math.sin(yaw),
-                z=0
-            )
-            
-            # Calculate camera position (behind and above the vehicle)
-            camera_location = vehicle_transform.location + carla.Location(
-                x=-10.0 * forward_vector.x,
-                y=-10.0 * forward_vector.y,
+            camera_location = carla.Location(
+                x=-10.0 * vehicle_transform.get_forward_vector().x,
+                y=-10.0 * vehicle_transform.get_forward_vector().y,
                 z=5.0
             )
             
@@ -318,36 +309,20 @@ class CarlaSimulator:
                 
                 # Calculate camera position (behind and above vehicle)
                 camera_location = carla.Location(
-                    x=vehicle_transform.location.x - 5.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
-                    y=vehicle_transform.location.y - 5.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
-                    z=vehicle_transform.location.z + 2.0
+                    x=vehicle_transform.location.x - 10.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
+                    y=vehicle_transform.location.y - 10.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
+                    z=vehicle_transform.location.z + 5.0  # Increased height for better view
                 )
                 
                 # Calculate camera rotation (looking at vehicle)
                 camera_rotation = carla.Rotation(
-                    pitch=-15.0,
+                    pitch=-20.0,  # Slightly steeper angle
                     yaw=vehicle_transform.rotation.yaw,
                     roll=0.0
                 )
                 
-                # Set camera transform with interpolation
-                current_transform = self.spectator.get_transform()
-                new_transform = carla.Transform(camera_location, camera_rotation)
-                
-                # Interpolate between current and new transform
-                interpolated_location = carla.Location(
-                    x=current_transform.location.x + (new_transform.location.x - current_transform.location.x) * 0.1,
-                    y=current_transform.location.y + (new_transform.location.y - current_transform.location.y) * 0.1,
-                    z=current_transform.location.z + (new_transform.location.z - current_transform.location.z) * 0.1
-                )
-                
-                interpolated_rotation = carla.Rotation(
-                    pitch=current_transform.rotation.pitch + (new_transform.rotation.pitch - current_transform.rotation.pitch) * 0.1,
-                    yaw=current_transform.rotation.yaw + (new_transform.rotation.yaw - current_transform.rotation.yaw) * 0.1,
-                    roll=current_transform.rotation.roll + (new_transform.rotation.roll - current_transform.rotation.roll) * 0.1
-                )
-                
-                self.spectator.set_transform(carla.Transform(interpolated_location, interpolated_rotation))
+                # Set camera transform
+                self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
                 
             except Exception as e:
                 print(f"Error updating camera: {e}")
@@ -610,31 +585,26 @@ class CarlaSimulator:
                             continue
                         
                         # Get next waypoint (look further ahead)
-                        next_waypoint = current_waypoint.next(3.0)[0]  # Reduced lookahead distance
+                        next_waypoint = current_waypoint.next(10.0)[0]  # Increased lookahead distance
                         if next_waypoint is None:
                             print("Warning: No next waypoint found")
                             continue
                         
-                        # Calculate road curvature
+                        # Calculate road curvature with more waypoints
                         road_curvature = 0.0
                         try:
-                            # Get the next few waypoints to estimate curvature
-                            next_waypoints = current_waypoint.next(20.0)
+                            # Get multiple waypoints ahead to better estimate curvature
+                            next_waypoints = current_waypoint.next(50.0)  # Look much further ahead
                             if len(next_waypoints) > 1:
-                                # Get the road's forward vector at current waypoint
-                                current_forward = current_waypoint.transform.get_forward_vector()
-                                
-                                # Get the road's forward vector at the next waypoint
-                                next_forward = next_waypoints[-1].transform.get_forward_vector()
-                                
-                                # Calculate the change in direction using the cross product
-                                turn_vector = current_forward.cross(next_forward)
-                                
-                                # The z-component of the cross product tells us if it's a right or left turn
-                                road_curvature = turn_vector.z
-                                
-                                # Normalize the curvature and apply a scaling factor
-                                road_curvature = max(-1.0, min(1.0, road_curvature * 2.0))
+                                # Calculate average curvature over multiple waypoints
+                                total_curvature = 0.0
+                                for i in range(len(next_waypoints) - 1):
+                                    current_forward = next_waypoints[i].transform.get_forward_vector()
+                                    next_forward = next_waypoints[i + 1].transform.get_forward_vector()
+                                    turn_vector = current_forward.cross(next_forward)
+                                    total_curvature += turn_vector.z
+                                road_curvature = total_curvature / (len(next_waypoints) - 1)
+                                road_curvature = max(-1.0, min(1.0, road_curvature * 0.8))  # Reduced sensitivity
                         except Exception as e:
                             print(f"Error calculating road curvature: {e}")
                         
@@ -664,13 +634,16 @@ class CarlaSimulator:
                         turn_direction = -1.0 if cross_product.z < 0 else 1.0
                         
                         # Calculate steering based on angle and turn direction
-                        max_steer = 0.5  # Reduced from 0.8 to 0.5
-                        angle_factor = min(1.0, angle / 60.0)  # Increased angle threshold from 45 to 60 degrees
+                        max_steer = 0.3  # Reduced from 0.4 to 0.3 for smoother turns
+                        angle_factor = min(1.0, angle / 30.0)  # Reduced angle threshold for earlier response
                         base_steer = turn_direction * angle_factor * max_steer
+                        
+                        # Add road curvature influence
+                        base_steer += road_curvature * 0.2  # Add road curvature influence
                         
                         # Apply stronger smoothing to steering
                         if hasattr(self, 'last_steer'):
-                            base_steer = self.last_steer * 0.8 + base_steer * 0.2  # Increased smoothing from 0.7/0.3 to 0.8/0.2
+                            base_steer = self.last_steer * 0.9 + base_steer * 0.1  # Increased smoothing
                         self.last_steer = base_steer
                         
                         # Add lane keeping behavior
@@ -683,7 +656,7 @@ class CarlaSimulator:
                                 # Calculate offset from lane center
                                 lane_center_offset = (self.vehicle.get_location().x - lane_center.x) / 3.0  # Normalize by lane width
                                 # Add small correction to steering
-                                base_steer += lane_center_offset * 0.1  # Small correction factor
+                                base_steer += lane_center_offset * 0.1  # Reduced lane keeping strength
                         except Exception as e:
                             print(f"Error calculating lane center: {e}")
                         
@@ -760,15 +733,15 @@ class CarlaSimulator:
                         # Calculate final steering based on obstacles and lane keeping
                         if obstacle_detected:
                             # When obstacle is detected, maintain lane position but reduce speed
-                            steer = base_steer * 0.7  # Reduce steering sensitivity by 30%
+                            steer = base_steer * 0.8  # Reduced steering sensitivity by 20%
                             # Add small correction to stay in lane
-                            steer += lane_center_offset * 0.15  # Slightly stronger lane keeping
+                            steer += lane_center_offset * 0.1  # Reduced lane keeping strength
                         else:
                             # Normal driving - use base steering with lane keeping
                             steer = base_steer
                         
                         # Ensure steering stays within bounds
-                        steer = max(-0.5, min(0.5, steer))
+                        steer = max(-0.3, min(0.3, steer))  # Reduced maximum steering angle
                         
                         # Check traffic light state
                         traffic_light_state = self.check_traffic_light()
@@ -807,6 +780,10 @@ class CarlaSimulator:
                             speed_factor *= 0.3  # Reduce speed to 30% when pedestrian is on road
                         elif obstacle_detected:
                             speed_factor *= 0.7  # Reduce speed to 70% when obstacle is detected
+                        
+                        # Further reduce speed based on angle to next waypoint
+                        if angle > 30.0:  # If turning more than 30 degrees
+                            speed_factor *= 0.5  # Reduce speed by half
                         
                         target_speed = max_speed * max(0.2, speed_factor)
                         
