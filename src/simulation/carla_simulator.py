@@ -214,7 +214,7 @@ class CarlaSimulator:
                     # Check for collisions at spawn point
                     collision = False
                     for actor in self.world.get_actors():
-                        if actor.get_location().distance(spawn_point.location) < 5.0:
+                        if actor.get_location().distance(spawn_point.location) < 10.0:  # Increased collision radius
                             collision = True
                             break
                     
@@ -227,8 +227,12 @@ class CarlaSimulator:
                             self.vehicle.set_simulate_physics(True)
                             # Set vehicle to manual control
                             self.vehicle.set_autopilot(False)
-                            # Enable vehicle physics
-                            self.vehicle.enable_constant_velocity(carla.Vector3D(0, 0, 0))
+                            # Set initial control values
+                            control = carla.VehicleControl()
+                            control.throttle = 0.5  # Initial throttle
+                            control.steer = 0.0
+                            control.brake = 0.0
+                            self.vehicle.apply_control(control)
                             return True
                 except Exception as e:
                     print(f"Failed to spawn at point {spawn_point.location}: {e}")
@@ -335,20 +339,20 @@ class CarlaSimulator:
             # Get all existing actors
             existing_actors = list(self.world.get_actors())
             
-            # Spawn pedestrians in a line across the road with spacing
+            # Spawn pedestrians in a line across the road with increased spacing
             for i in range(5):
                 try:
-                    # Position pedestrians in a line with spacing
+                    # Position pedestrians in a line with increased spacing
                     pedestrian_location = carla.Location(
-                        x=road_location.x + i * 30.0,  # Increased spacing to 30 meters
-                        y=road_location.y + 60.0,     # Increased distance ahead to 60 meters
+                        x=road_location.x + i * 50.0,  # Increased spacing to 50 meters
+                        y=road_location.y + 100.0,     # Increased distance ahead to 100 meters
                         z=road_location.z
                     )
                     
-                    # Check for collisions before spawning
+                    # Check for collisions before spawning with increased radius
                     collision = False
                     for actor in existing_actors:
-                        if actor.get_location().distance(pedestrian_location) < 30.0:
+                        if actor.get_location().distance(pedestrian_location) < 10.0:  # Increased collision radius
                             collision = True
                             break
                     
@@ -359,17 +363,14 @@ class CarlaSimulator:
                             carla.Rotation(yaw=90.0)  # Facing across the road
                         )
                         
-                        # Spawn pedestrian with physics disabled
+                        # Spawn pedestrian
                         walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
                         if walker is not None:
                             try:
-                                # Disable collisions initially
-                                walker.set_simulate_physics(False)
-                                
                                 # Add to our list
                                 self.pedestrians.append(walker)
                                 
-                                # Add AI controller for the pedestrian
+                                # Create and attach controller
                                 controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
                                 if controller_bp is None:
                                     print("Warning: Failed to find walker controller blueprint")
@@ -383,17 +384,14 @@ class CarlaSimulator:
                                     try:
                                         controller.start()
                                         
-                                        # Make pedestrian walk across the road
-                                        target_location = carla.Location(
+                                        # Set random destination
+                                        destination = carla.Location(
                                             x=pedestrian_location.x,
                                             y=pedestrian_location.y + 30.0,  # Walk 30 meters across
                                             z=pedestrian_location.z
                                         )
-                                        controller.go_to_location(target_location)
+                                        controller.go_to_location(destination)
                                         controller.set_max_speed(1.4)  # Walking speed
-                                        
-                                        # Enable physics after controller is attached
-                                        walker.set_simulate_physics(True)
                                     except Exception as e:
                                         print(f"Warning: Failed to start walker controller: {e}")
                                         if controller in self.walker_controllers:
@@ -573,7 +571,7 @@ class CarlaSimulator:
                         
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
-                            throttle=float(decision.get('throttle', 0.0)),
+                            throttle=float(decision.get('throttle', 0.5)),  # Default to 0.5 if no decision
                             brake=float(decision.get('brake', 0.0)),
                             steer=float(decision.get('steer', 0.0))
                         )
