@@ -1243,6 +1243,107 @@ class CarlaSimulator:
         except Exception as e:
             print(f"Error in vehicle control update: {e}")
 
+    def _calculate_steering(self, vehicle_transform, next_waypoint, current_velocity):
+        """Calculate steering angle with improved stability."""
+        # Get vehicle's current location and rotation
+        vehicle_location = vehicle_transform.location
+        vehicle_rotation = vehicle_transform.rotation
+        
+        # Calculate vector to next waypoint
+        waypoint_vector = carla.Location(
+            next_waypoint.x - vehicle_location.x,
+            next_waypoint.y - vehicle_location.y,
+            0
+        )
+        
+        # Calculate angle between vehicle's forward vector and waypoint vector
+        vehicle_forward = vehicle_transform.get_forward_vector()
+        angle = math.degrees(math.acos(
+            (vehicle_forward.x * waypoint_vector.x + vehicle_forward.y * waypoint_vector.y) /
+            (math.sqrt(vehicle_forward.x**2 + vehicle_forward.y**2) * 
+             math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
+        ))
+        
+        # Calculate cross product to determine direction
+        cross = vehicle_forward.x * waypoint_vector.y - vehicle_forward.y * waypoint_vector.x
+        if cross < 0:
+            angle = -angle
+            
+        # Improved steering calculation with smoother transitions
+        max_steer = 0.1  # Reduced from 0.15 for smoother turns
+        angle_threshold = 30.0  # Reduced from 45 for earlier response
+        
+        # Calculate base steering
+        if abs(angle) > angle_threshold:
+            # Recovery behavior for high angles
+            steer = max_steer * (angle / abs(angle))
+            # Reduce speed during recovery
+            current_velocity *= 0.5
+        else:
+            # Normal steering with smoother transitions
+            steer = (angle / angle_threshold) * max_steer
+            
+        # Apply smoothing to steering
+        if hasattr(self, 'last_steer'):
+            smoothing_factor = 0.95  # Increased from 0.9 for more stability
+            steer = smoothing_factor * self.last_steer + (1 - smoothing_factor) * steer
+            
+        self.last_steer = steer
+        return steer, current_velocity
+
+    def _calculate_throttle_brake(self, current_velocity, target_velocity, vehicle_transform, next_waypoint):
+        """Calculate throttle and brake with improved stability."""
+        # Calculate speed difference
+        speed_diff = target_velocity - current_velocity
+        
+        # Get vehicle's current location and rotation
+        vehicle_location = vehicle_transform.location
+        vehicle_rotation = vehicle_transform.rotation
+        
+        # Calculate vector to next waypoint
+        waypoint_vector = carla.Location(
+            next_waypoint.x - vehicle_location.x,
+            next_waypoint.y - vehicle_location.y,
+            0
+        )
+        
+        # Calculate angle between vehicle's forward vector and waypoint vector
+        vehicle_forward = vehicle_transform.get_forward_vector()
+        angle = math.degrees(math.acos(
+            (vehicle_forward.x * waypoint_vector.x + vehicle_forward.y * waypoint_vector.y) /
+            (math.sqrt(vehicle_forward.x**2 + vehicle_forward.y**2) * 
+             math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
+        ))
+        
+        # Adjust target velocity based on angle
+        if abs(angle) > 30.0:
+            target_velocity *= 0.5  # Reduce speed for sharp turns
+        elif abs(angle) > 15.0:
+            target_velocity *= 0.7  # Moderate speed reduction for medium turns
+            
+        # Calculate throttle and brake
+        if speed_diff > 0:
+            # Accelerate
+            throttle = min(0.5, speed_diff / target_velocity)  # Reduced max throttle
+            brake = 0.0
+        else:
+            # Decelerate
+            throttle = 0.0
+            brake = min(0.5, abs(speed_diff) / target_velocity)  # Reduced max brake
+            
+        # Apply smoothing to throttle and brake
+        if hasattr(self, 'last_throttle'):
+            smoothing_factor = 0.95
+            throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
+        if hasattr(self, 'last_brake'):
+            smoothing_factor = 0.95
+            brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
+            
+        self.last_throttle = throttle
+        self.last_brake = brake
+        
+        return throttle, brake
+
 if __name__ == "__main__":
     simulator = CarlaSimulator()
     simulator.run() 
