@@ -9,7 +9,8 @@ import torch.nn as nn
 import torch.optim as optim
 from typing import List, Dict, Any, Tuple
 from .obstacle_avoidance import ObstacleAvoidance
-from .ethical_priorities import EthicalPriorities
+from .rl_agent import EthicalPriorities
+from .rl_agent import RLEthicalAgent
 
 class CarlaSimulator:
     def __init__(self, host: str = 'localhost', port: int = 2000):
