@@ -14,6 +14,62 @@ class ObstacleAvoidance:
         self.experience_buffer = []
         self.buffer_size = 1000
         
+        # Initialize models with basic rules
+        self._initialize_models()
+        
+    def _initialize_models(self):
+        """Initialize models with basic rules for obstacle avoidance."""
+        # Create some basic training data
+        X = []
+        y_throttle = []
+        y_brake = []
+        y_steer = []
+        
+        # Case 1: No obstacles, high speed
+        X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, far obstacle
+        y_throttle.append(0.7)  # maintain speed
+        y_brake.append(0.0)     # no brake
+        y_steer.append(0.0)     # go straight
+        
+        # Case 2: Obstacle far ahead
+        X.append([0.8, 0.5, 0.0, 1.0, 0.0])  # high speed, medium distance
+        y_throttle.append(0.5)  # reduce speed
+        y_brake.append(0.0)     # no brake
+        y_steer.append(0.0)     # go straight
+        
+        # Case 3: Obstacle close ahead
+        X.append([0.8, 0.2, 0.0, 1.0, 0.0])  # high speed, close distance
+        y_throttle.append(0.0)  # no throttle
+        y_brake.append(0.5)     # medium brake
+        y_steer.append(0.0)     # go straight
+        
+        # Case 4: Obstacle to the left
+        X.append([0.8, 0.3, -1.0, 0.0, 0.0])  # high speed, obstacle left
+        y_throttle.append(0.3)  # reduce speed
+        y_brake.append(0.0)     # no brake
+        y_steer.append(0.3)     # steer right
+        
+        # Case 5: Obstacle to the right
+        X.append([0.8, 0.3, 1.0, 0.0, 0.0])  # high speed, obstacle right
+        y_throttle.append(0.3)  # reduce speed
+        y_brake.append(0.0)     # no brake
+        y_steer.append(-0.3)    # steer left
+        
+        # Convert to numpy arrays
+        X = np.array(X)
+        y_throttle = np.array(y_throttle)
+        y_brake = np.array(y_brake)
+        y_steer = np.array(y_steer)
+        
+        # Train models with initial data
+        self.throttle_model.fit(X, y_throttle)
+        self.brake_model.fit(X, y_brake)
+        self.steer_model.fit(X, y_steer)
+        
+        # Add to experience buffer
+        for i in range(len(X)):
+            self.experience_buffer.append((X[i], (y_throttle[i], y_brake[i], y_steer[i])))
+        
     def preprocess_input(self, 
                         vehicle_location: np.ndarray,
                         vehicle_velocity: float,
