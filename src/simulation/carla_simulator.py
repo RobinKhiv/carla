@@ -455,8 +455,17 @@ class CarlaSimulator:
                         print("Warning: Vehicle is not on road")
                         continue
                     
-                    # Get next waypoint
-                    next_waypoint = current_waypoint.next(5.0)[0]  # Look 5 meters ahead
+                    # Get next waypoint with error handling
+                    next_waypoints = current_waypoint.next(5.0)
+                    if not next_waypoints:
+                        print("Warning: No next waypoint found")
+                        # Try to get next waypoint with a shorter distance
+                        next_waypoints = current_waypoint.next(2.0)
+                        if not next_waypoints:
+                            print("Error: Cannot find next waypoint")
+                            continue
+                    
+                    next_waypoint = next_waypoints[0]
                     
                     # Calculate angle to next waypoint
                     vehicle_transform = self.vehicle.get_transform()
