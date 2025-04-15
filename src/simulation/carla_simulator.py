@@ -125,6 +125,8 @@ class CarlaSimulator:
                                         
                                         # Start controller
                                         try:
+                                            # Set pedestrian to be non-collidable with other pedestrians
+                                            walker.set_simulate_physics(False)
                                             controller.start()
                                             
                                             # Set random destination
@@ -467,11 +469,6 @@ class CarlaSimulator:
             self.spawn_pedestrians(10)
             self.spawn_other_vehicles(10)
             
-            # Create scenarios
-            print("Creating scenarios...")
-            self.create_trolley_scenario()
-            self.create_hazard_scenario()
-            
             # Wait a moment for traffic to settle
             for _ in range(10):
                 self.world.tick()
@@ -484,6 +481,11 @@ class CarlaSimulator:
             # Set up camera and sensors
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
+            
+            # Create scenarios after vehicle is spawned
+            print("Creating scenarios...")
+            self.create_trolley_scenario()
+            self.create_hazard_scenario()
             
             # Initialize sensor manager if not already done
             if not self.sensor_manager:
@@ -623,6 +625,13 @@ class CarlaSimulator:
                         vehicle_to_center = vehicle_location - road_center
                         lateral_offset = vehicle_to_center.dot(road_right)
                         
+                        # Check for obstacles
+                        obstacle_detected = False
+                        for actor in self.world.get_actors():
+                            if actor.id != self.vehicle.id and actor.get_location().distance(vehicle_location) < 20.0:
+                                obstacle_detected = True
+                                break
+                        
                         # Calculate the road's curvature at the current waypoint
                         road_curvature = 0.0
                         try:
@@ -695,6 +704,7 @@ class CarlaSimulator:
                         print(f"Road curvature: {road_curvature}")
                         print(f"Target speed: {target_speed} m/s")
                         print(f"Current speed: {current_velocity} m/s")
+                        print(f"Obstacle detected: {obstacle_detected}")
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
