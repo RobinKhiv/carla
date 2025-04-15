@@ -666,12 +666,12 @@ class CarlaSimulator:
                         # Calculate steering based on angle and turn direction
                         max_steer = 0.5  # Reduced from 0.8 to 0.5
                         angle_factor = min(1.0, angle / 60.0)  # Increased angle threshold from 45 to 60 degrees
-                        steer = turn_direction * angle_factor * max_steer
+                        base_steer = turn_direction * angle_factor * max_steer
                         
                         # Apply stronger smoothing to steering
                         if hasattr(self, 'last_steer'):
-                            steer = self.last_steer * 0.8 + steer * 0.2  # Increased smoothing from 0.7/0.3 to 0.8/0.2
-                        self.last_steer = steer
+                            base_steer = self.last_steer * 0.8 + base_steer * 0.2  # Increased smoothing from 0.7/0.3 to 0.8/0.2
+                        self.last_steer = base_steer
                         
                         # Add lane keeping behavior
                         lane_center_offset = 0.0
@@ -683,7 +683,7 @@ class CarlaSimulator:
                                 # Calculate offset from lane center
                                 lane_center_offset = (self.vehicle.get_location().x - lane_center.x) / 3.0  # Normalize by lane width
                                 # Add small correction to steering
-                                steer += lane_center_offset * 0.1  # Small correction factor
+                                base_steer += lane_center_offset * 0.1  # Small correction factor
                         except Exception as e:
                             print(f"Error calculating lane center: {e}")
                         
@@ -757,33 +757,18 @@ class CarlaSimulator:
                         else:
                             print("No obstacles detected")
                         
-                        # Check traffic light state
-                        traffic_light_state = self.check_traffic_light()
-                        if traffic_light_state == 'red':
-                            # Get current velocity
-                            current_velocity = self.vehicle.get_velocity().length()
-                            
-                            # Calculate stopping distance
-                            stopping_distance = 5.0  # meters
-                            current_distance = self.vehicle.get_location().distance(
-                                self.world.get_map().get_waypoint(self.vehicle.get_location()).transform.location
-                            )
-                            
-                            if current_distance <= stopping_distance:
-                                # Stop at red light
-                                throttle = 0.0
-                                brake = 1.0  # Full brake
-                                steer = 0.0  # Don't steer while stopped
-                                print("Red light detected - stopping")
-                            else:
-                                # Gradually slow down as approaching red light
-                                throttle = 0.0
-                                brake = min(0.5, (current_distance - stopping_distance) / 10.0)
-                                print("Red light ahead - slowing down")
-                        elif traffic_light_state == 'yellow':
-                            # Slow down for yellow light
-                            speed_factor = 0.3  # Reduce speed to 30%
-                            print("Yellow light detected - slowing down")
+                        # Calculate final steering based on obstacles and lane keeping
+                        if obstacle_detected:
+                            # When obstacle is detected, maintain lane position but reduce speed
+                            steer = base_steer * 0.7  # Reduce steering sensitivity by 30%
+                            # Add small correction to stay in lane
+                            steer += lane_center_offset * 0.15  # Slightly stronger lane keeping
+                        else:
+                            # Normal driving - use base steering with lane keeping
+                            steer = base_steer
+                        
+                        # Ensure steering stays within bounds
+                        steer = max(-0.5, min(0.5, steer))
                         
                         # Calculate speed based on road curvature and obstacles
                         max_speed = 5.0
@@ -792,11 +777,8 @@ class CarlaSimulator:
                         # If there's a pedestrian on the road, significantly reduce speed
                         if is_pedestrian_on_road:
                             speed_factor *= 0.3  # Reduce speed to 30% when pedestrian is on road
-                            # Maintain lane position, don't swerve
-                            steer = steer * 0.5  # Reduce steering sensitivity
-                        else:
-                            # Normal speed control
-                            steer = steer
+                        elif obstacle_detected:
+                            speed_factor *= 0.7  # Reduce speed to 70% when obstacle is detected
                         
                         target_speed = max_speed * max(0.2, speed_factor)
                         
