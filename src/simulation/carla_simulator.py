@@ -1226,23 +1226,24 @@ class CarlaSimulator:
             # Calculate normalized position in lane (0 = left edge, 1 = right edge)
             lane_position = (vehicle_location.x - lane_boundaries['left']) / lane_width
             
-            # Calculate target speed based on lane position
-            # Slow down when too close to either edge
-            speed_factor = 1.0
+            # Calculate target speed based on lane position and current velocity
+            target_speed = 5.0  # Base target speed in m/s
+            
+            # Adjust target speed based on lane position
             if left_distance < 0.5 or right_distance < 0.5:
-                speed_factor = 0.5
+                target_speed *= 0.5  # Slow down when near edges
             elif left_distance < 1.0 or right_distance < 1.0:
-                speed_factor = 0.7
+                target_speed *= 0.7  # Moderate speed when approaching edges
             
             # Calculate steering correction
             target_position = 0.5  # Center of lane
             position_error = lane_position - target_position
             
-            # Apply stronger correction when near lane edges
+            # Apply progressive steering correction
             if abs(position_error) > 0.4:
-                steer_correction = -position_error * 0.3
+                steer_correction = -position_error * 0.2  # Stronger correction near edges
             else:
-                steer_correction = -position_error * 0.1
+                steer_correction = -position_error * 0.1  # Gentler correction in center
             
             # Smooth steering changes
             if hasattr(self, 'last_steer'):
@@ -1253,9 +1254,51 @@ class CarlaSimulator:
             # Apply bounds to steering
             self.last_steer = max(-0.3, min(0.3, self.last_steer))
             
+            # Calculate throttle and brake based on velocity difference
+            velocity_diff = target_speed - current_velocity
+            
+            if velocity_diff > 0:
+                # Accelerate
+                throttle = min(0.3, velocity_diff / 2.0)
+                brake = 0.0
+            else:
+                # Decelerate
+                throttle = 0.0
+                brake = min(0.3, -velocity_diff / 2.0)
+            
+            # Check for obstacles
+            obstacle_detected = False
+            for actor in self.world.get_actors():
+                if actor.type_id.startswith('walker.pedestrian'):
+                    distance = actor.get_location().distance(vehicle_location)
+                    if distance < 10.0:  # Obstacle within 10 meters
+                        obstacle_detected = True
+                        # Gradually reduce speed when obstacle detected
+                        target_speed = min(target_speed, distance * 0.5)
+                        break
+            
+            # Check vehicle stability
+            pitch = vehicle_transform.rotation.pitch
+            roll = vehicle_transform.rotation.roll
+            
+            if abs(pitch) > 1.0 or abs(roll) > 1.0:
+                # Vehicle is tilted, reduce speed and straighten
+                target_speed *= 0.5
+                self.last_steer *= 0.5  # Reduce steering when tilted
+            
+            # Create and apply vehicle control
+            control = carla.VehicleControl()
+            control.throttle = float(throttle)
+            control.brake = float(brake)
+            control.steer = float(self.last_steer)
+            
             # Print debug information
             print(f"Lane control - Position: {lane_position:.3f}, Error: {position_error:.3f}, Steer: {self.last_steer:.3f}")
-            print(f"Speed factor: {speed_factor:.2f}, Current velocity: {current_velocity:.2f} m/s")
+            print(f"Target speed: {target_speed:.2f}, Current velocity: {current_velocity:.2f} m/s")
+            print(f"Vehicle pitch: {pitch:.1f}°, roll: {roll:.1f}°")
+            
+            # Apply control to vehicle
+            self.vehicle.apply_control(control)
             
         except Exception as e:
             print(f"Error in vehicle control update: {e}")
