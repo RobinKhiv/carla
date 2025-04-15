@@ -523,6 +523,20 @@ class CarlaSimulator:
                     # Get current velocity
                     current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
                     
+                    # Check for traffic lights
+                    traffic_light = current_waypoint.get_landmarks(5.0, False, '1000001')  # Get traffic lights within 5 meters
+                    if traffic_light:
+                        light = traffic_light[0]  # Get the first traffic light
+                        if light:
+                            state = light.get_state()
+                            if state == carla.TrafficLightState.Red or state == carla.TrafficLightState.Yellow:
+                                print(f"Traffic light is {state}, stopping...")
+                                control.throttle = 0.0
+                                control.brake = 1.0
+                                control.steer = 0.0
+                                self.vehicle.apply_control(control)
+                                continue
+                    
                     # Set target speed
                     target_speed = 20.0  # km/h
                     
