@@ -672,11 +672,17 @@ class CarlaSimulator:
                             
                             # Get obstacle avoidance predictions
                             obstacles = self.detect_obstacles()
+                            
+                            # Get next waypoint location
+                            next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
+                            next_waypoint_location = next_waypoint.transform.location
+                            
                             obstacle_control = self.obstacle_avoidance.predict_control(
                                 vehicle_location,
                                 vehicle_velocity,
                                 self.vehicle.get_transform().rotation,
-                                obstacles
+                                obstacles,
+                                next_waypoint_location
                             )
                             
                             if pedestrian_in_path and pedestrian_location:
