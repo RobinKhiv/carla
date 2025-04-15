@@ -739,13 +739,24 @@ class CarlaSimulator:
                         
                         # If obstacle detected, reduce steering to prevent swerving
                         if obstacle_detected:
-                            # Reduce steering sensitivity when near obstacles
-                            steer = base_steer * 0.5
-                            # If obstacle is on the right, steer slightly left and vice versa
-                            if lateral_offset > 0:
-                                steer = max(steer, -0.1)  # Limit left turn
+                            # Check if the obstacle is a pedestrian on the sidewalk
+                            is_sidewalk_pedestrian = False
+                            for info in obstacle_info:
+                                if info.get('lane_type') == 'sidewalk':
+                                    is_sidewalk_pedestrian = True
+                                    break
+                            
+                            if is_sidewalk_pedestrian:
+                                # For sidewalk pedestrians, maintain normal steering but reduce speed
+                                steer = base_steer
                             else:
-                                steer = min(steer, 0.1)   # Limit right turn
+                                # For other obstacles, reduce steering sensitivity
+                                steer = base_steer * 0.5
+                                # If obstacle is on the right, steer slightly left and vice versa
+                                if lateral_offset > 0:
+                                    steer = max(steer, -0.1)  # Limit left turn
+                                else:
+                                    steer = min(steer, 0.1)   # Limit right turn
                         else:
                             steer = base_steer
                         
