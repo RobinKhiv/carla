@@ -574,11 +574,44 @@ class CarlaSimulator:
                         if not self.vehicle:
                             raise RuntimeError("Vehicle not initialized")
                         
+                        # Get current waypoint
+                        current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
+                        if current_waypoint is None:
+                            print("Warning: Vehicle is not on road")
+                            continue
+                        
+                        # Get next waypoint
+                        next_waypoint = current_waypoint.next(1.0)[0]
+                        if next_waypoint is None:
+                            print("Warning: No next waypoint found")
+                            continue
+                        
+                        # Calculate direction to next waypoint
+                        vehicle_location = self.vehicle.get_location()
+                        next_location = next_waypoint.transform.location
+                        direction = next_location - vehicle_location
+                        direction = direction.make_unit_vector()
+                        
+                        # Calculate angle between vehicle forward vector and direction to next waypoint
+                        vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                        angle = math.degrees(math.acos(vehicle_forward.dot(direction)))
+                        
+                        # Calculate steering based on angle
+                        max_steer = 0.5
+                        steer = max(-max_steer, min(max_steer, angle / 45.0))
+                        
+                        # Check for obstacles
+                        obstacle_detected = False
+                        for actor in self.world.get_actors():
+                            if actor.id != self.vehicle.id and actor.get_location().distance(vehicle_location) < 20.0:
+                                obstacle_detected = True
+                                break
+                        
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
-                            throttle=float(decision.get('throttle', 0.5)),  # Default to 0.5 if no decision
-                            brake=float(decision.get('brake', 0.0)),
-                            steer=float(decision.get('steer', 0.0))
+                            throttle=float(decision.get('throttle', 0.3)) if not obstacle_detected else 0.0,  # Reduced default throttle
+                            brake=float(decision.get('brake', 0.0)) if not obstacle_detected else 0.5,
+                            steer=float(steer)  # Use calculated steering
                         )
                         
                         # Print control values for debugging
