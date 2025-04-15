@@ -644,20 +644,48 @@ class CarlaSimulator:
                                 obstacle_direction = obstacle_direction.make_unit_vector()
                                 forward_dot = vehicle_forward.dot(obstacle_direction)
                                 
-                                # Only consider obstacles in front of the vehicle
-                                if forward_dot > 0.5:  # More than 60 degrees in front
-                                    obstacle_detected = True
-                                    obstacle_info.append({
-                                        'type': actor.type_id,
-                                        'distance': distance,
-                                        'forward_dot': forward_dot
-                                    })
+                                # For vehicles, use the same criteria as before
+                                if actor.type_id.startswith('vehicle.'):
+                                    if forward_dot > 0.5:  # More than 60 degrees in front
+                                        obstacle_detected = True
+                                        obstacle_info.append({
+                                            'type': actor.type_id,
+                                            'distance': distance,
+                                            'forward_dot': forward_dot
+                                        })
+                                # For pedestrians, be more selective
+                                elif actor.type_id.startswith('walker.'):
+                                    # Get the waypoint at the pedestrian's location
+                                    pedestrian_waypoint = self.world.get_map().get_waypoint(actor.get_location())
+                                    if pedestrian_waypoint:
+                                        # Only consider pedestrians that are on the road or very close to it
+                                        if pedestrian_waypoint.lane_type == carla.LaneType.Driving:
+                                            # For pedestrians on the road, be more cautious
+                                            if forward_dot > 0.3:  # More than 72 degrees in front
+                                                obstacle_detected = True
+                                                obstacle_info.append({
+                                                    'type': actor.type_id,
+                                                    'distance': distance,
+                                                    'forward_dot': forward_dot,
+                                                    'lane_type': 'road'
+                                                })
+                                        else:
+                                            # For pedestrians on sidewalks, only stop if they're very close and directly in front
+                                            if distance < 5.0 and forward_dot > 0.8:  # Very close and almost directly in front
+                                                obstacle_detected = True
+                                                obstacle_info.append({
+                                                    'type': actor.type_id,
+                                                    'distance': distance,
+                                                    'forward_dot': forward_dot,
+                                                    'lane_type': 'sidewalk'
+                                                })
                         
                         # Print obstacle information
                         if obstacle_info:
                             print("Detected obstacles:")
                             for info in obstacle_info:
-                                print(f"  - Type: {info['type']}, Distance: {info['distance']:.2f}m, Forward dot: {info['forward_dot']:.2f}")
+                                lane_type = info.get('lane_type', 'unknown')
+                                print(f"  - Type: {info['type']}, Distance: {info['distance']:.2f}m, Forward dot: {info['forward_dot']:.2f}, Lane: {lane_type}")
                         else:
                             print("No obstacles detected")
                         
