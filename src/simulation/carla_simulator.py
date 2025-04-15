@@ -243,16 +243,51 @@ class CarlaSimulator:
                         self.vehicle = self.world.spawn_actor(vehicle_bp, spawn_point)
                         if self.vehicle is not None:
                             print(f"Vehicle spawned successfully at {spawn_point.location}")
+                            
                             # Set vehicle physics
                             self.vehicle.set_simulate_physics(True)
+                            
                             # Set vehicle to manual control
                             self.vehicle.set_autopilot(False)
-                            # Set initial control values
+                            
+                            # Check traffic rules before allowing movement
+                            print("Checking traffic rules...")
+                            
+                            # Check for traffic lights
+                            traffic_light_state = self.check_traffic_light()
+                            if traffic_light_state == 'red' or traffic_light_state == 'yellow':
+                                print(f"Traffic light is {traffic_light_state}, waiting...")
+                                # Wait for green light
+                                while traffic_light_state != 'green':
+                                    self.world.tick()
+                                    traffic_light_state = self.check_traffic_light()
+                                    time.sleep(0.1)
+                                print("Traffic light is green, proceeding...")
+                            
+                            # Check for stop signs
+                            stop_signs = self.world.get_actors().filter('traffic.stop')
+                            for stop_sign in stop_signs:
+                                if stop_sign.get_location().distance(spawn_point.location) < 10.0:
+                                    print("Stop sign detected, waiting...")
+                                    time.sleep(2.0)  # Wait at stop sign
+                                    print("Proceeding after stop...")
+                            
+                            # Check for pedestrians
+                            pedestrians = self.world.get_actors().filter('walker.pedestrian.*')
+                            for pedestrian in pedestrians:
+                                if pedestrian.get_location().distance(spawn_point.location) < 15.0:
+                                    print("Pedestrian detected, waiting...")
+                                    time.sleep(2.0)  # Wait for pedestrian
+                                    print("Proceeding after pedestrian...")
+                            
+                            # Set initial control values after traffic checks
                             control = carla.VehicleControl()
-                            control.throttle = 0.1  # Reduced initial throttle
+                            control.throttle = 0.0  # Start with no throttle
                             control.steer = 0.0
                             control.brake = 0.0
                             self.vehicle.apply_control(control)
+                            
+                            print("Traffic rules checked, vehicle ready to proceed")
                             return True
                 except Exception as e:
                     print(f"Failed to spawn at point {spawn_point.location}: {e}")
