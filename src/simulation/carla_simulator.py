@@ -28,9 +28,9 @@ class CarlaSimulator:
             self.other_vehicles = []
             self.walker_controllers = []
             self.traffic_manager = None
+            self.initialized = False  # Add initialization flag
             
-            # Initialize components
-            self.initialize()
+            # Don't initialize here, wait for run() method
         except Exception as e:
             print(f"Error initializing CARLA simulator: {e}")
             raise
@@ -473,8 +473,10 @@ class CarlaSimulator:
     def run(self):
         """Run the simulation."""
         try:
-            if not self.initialize():
-                raise RuntimeError("Failed to initialize simulator")
+            if not self.initialized:  # Only initialize if not already done
+                if not self.initialize():
+                    raise RuntimeError("Failed to initialize simulator")
+                self.initialized = True
             
             # Clean up any existing actors
             self.cleanup()
