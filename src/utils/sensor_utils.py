@@ -17,14 +17,21 @@ class SensorUtils:
     @staticmethod
     def process_lidar(point_cloud: carla.LidarMeasurement) -> Dict[str, Any]:
         """Process LiDAR point cloud data."""
+        # Get the raw data as a numpy array
         points = np.frombuffer(point_cloud.raw_data, dtype=np.dtype('f4'))
-        points = np.reshape(points, (int(points.shape[0] / 3), 3))
+        
+        # Reshape the array to (N, 4) where N is the number of points
+        # Each point has 4 values: x, y, z, intensity
+        points = np.reshape(points, (int(points.shape[0] / 4), 4))
+        
+        # Extract x, y, z coordinates (ignore intensity)
+        points_xyz = points[:, :3]
         
         # Calculate basic statistics
-        distances = np.sqrt(np.sum(points**2, axis=1))
+        distances = np.sqrt(np.sum(points_xyz**2, axis=1))
         
         return {
-            'points': points,
+            'points': points_xyz,
             'distances': distances,
             'mean_distance': np.mean(distances),
             'min_distance': np.min(distances),
