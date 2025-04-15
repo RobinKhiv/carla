@@ -307,22 +307,41 @@ class CarlaSimulator:
                 # Get vehicle transform
                 vehicle_transform = self.vehicle.get_transform()
                 
-                # Calculate camera position (behind and above vehicle)
+                # Calculate camera position (further back and higher for smoother view)
                 camera_location = carla.Location(
-                    x=vehicle_transform.location.x - 10.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
-                    y=vehicle_transform.location.y - 10.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
-                    z=vehicle_transform.location.z + 5.0  # Increased height for better view
+                    x=vehicle_transform.location.x - 15.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
+                    y=vehicle_transform.location.y - 15.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
+                    z=vehicle_transform.location.z + 8.0  # Increased height for better view
                 )
                 
-                # Calculate camera rotation (looking at vehicle)
+                # Calculate camera rotation (looking at vehicle with smoother angle)
                 camera_rotation = carla.Rotation(
-                    pitch=-20.0,  # Slightly steeper angle
+                    pitch=-15.0,  # Reduced angle for smoother view
                     yaw=vehicle_transform.rotation.yaw,
                     roll=0.0
                 )
                 
-                # Set camera transform
-                self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
+                # Smoothly interpolate camera position
+                current_transform = self.spectator.get_transform()
+                target_transform = carla.Transform(camera_location, camera_rotation)
+                
+                # Use linear interpolation for smoother movement
+                smooth_factor = 0.1  # Adjust this value to control smoothness (0.0 to 1.0)
+                new_location = carla.Location(
+                    x=current_transform.location.x + (target_transform.location.x - current_transform.location.x) * smooth_factor,
+                    y=current_transform.location.y + (target_transform.location.y - current_transform.location.y) * smooth_factor,
+                    z=current_transform.location.z + (target_transform.location.z - current_transform.location.z) * smooth_factor
+                )
+                
+                # Smoothly interpolate camera rotation
+                new_rotation = carla.Rotation(
+                    pitch=current_transform.rotation.pitch + (target_transform.rotation.pitch - current_transform.rotation.pitch) * smooth_factor,
+                    yaw=current_transform.rotation.yaw + (target_transform.rotation.yaw - current_transform.rotation.yaw) * smooth_factor,
+                    roll=current_transform.rotation.roll + (target_transform.rotation.roll - current_transform.rotation.roll) * smooth_factor
+                )
+                
+                # Set camera transform with smoothed values
+                self.spectator.set_transform(carla.Transform(new_location, new_rotation))
                 
             except Exception as e:
                 print(f"Error updating camera: {e}")
@@ -790,8 +809,15 @@ class CarlaSimulator:
                         # Get current velocity
                         current_velocity = self.vehicle.get_velocity().length()
                         
-                        # Calculate throttle and brake based on speed difference
-                        if traffic_light_state != 'red':  # Only apply speed control if not at red light
+                        # Check if vehicle is stuck (very low velocity but applying throttle)
+                        if current_velocity < 0.1 and throttle > 0.1:
+                            print("Vehicle appears to be stuck - attempting recovery")
+                            # Apply reverse throttle and opposite steering
+                            throttle = -0.3
+                            steer = -steer * 0.5  # Reduce steering magnitude
+                            brake = 0.0
+                        else:
+                            # Normal speed control
                             speed_diff = target_speed - current_velocity
                             if speed_diff > 0:
                                 throttle = min(0.3, speed_diff / 2.0)  # Reduced throttle
@@ -799,6 +825,19 @@ class CarlaSimulator:
                             else:
                                 throttle = 0.0
                                 brake = min(0.5, -speed_diff / 2.0)
+                        
+                        # Check vehicle orientation
+                        vehicle_transform = self.vehicle.get_transform()
+                        pitch = vehicle_transform.rotation.pitch
+                        roll = vehicle_transform.rotation.roll
+                        
+                        # If vehicle is tilted too much, try to recover
+                        if abs(pitch) > 1.0 or abs(roll) > 1.0:
+                            print(f"Vehicle tilted - pitch: {pitch}, roll: {roll}")
+                            # Reduce speed and steering
+                            throttle *= 0.5
+                            steer *= 0.5
+                            brake = 0.1  # Light brake to help stabilize
                         
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
@@ -811,6 +850,8 @@ class CarlaSimulator:
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
                         print(f"Vehicle angle to waypoint: {angle} degrees")
                         print(f"Obstacle detected: {obstacle_detected}")
+                        print(f"Current velocity: {current_velocity} m/s")
+                        print(f"Vehicle pitch: {pitch}, roll: {roll}")
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
