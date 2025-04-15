@@ -56,6 +56,18 @@ class ObstacleAvoidance:
         y_brake.append(0.1)     # light brake
         y_steer.append(0.3)     # turn
         
+        # Case 6: Vehicle ahead
+        X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, vehicle close
+        y_throttle.append(0.0)  # no throttle
+        y_brake.append(0.3)     # medium brake
+        y_steer.append(0.0)     # go straight
+        
+        # Case 7: Traffic light
+        X.append([0.5, 0.1, 0.0, 0.0, 0.0])  # medium speed, near traffic light
+        y_throttle.append(0.0)  # no throttle
+        y_brake.append(0.5)     # strong brake
+        y_steer.append(0.0)     # go straight
+        
         # Convert to numpy arrays
         X = np.array(X)
         y_throttle = np.array(y_throttle)
@@ -113,11 +125,22 @@ class ObstacleAvoidance:
             if cross_product < 0:
                 angle_to_waypoint = -angle_to_waypoint
         
+        # Get the nearest obstacle
+        nearest_obstacle = None
+        min_distance = float('inf')
+        for obstacle in obstacles:
+            if obstacle[1] < min_distance:
+                min_distance = obstacle[1]
+                nearest_obstacle = obstacle
+        
+        # Normalize obstacle distance (assuming max detection range of 50 meters)
+        normalized_distance = min(min_distance / 50.0, 1.0) if nearest_obstacle else 1.0
+        
         # Create input features
         features = np.array([
             normalized_velocity,
-            1.0,  # default distance (no obstacles)
-            angle_to_waypoint,  # angle to next waypoint
+            normalized_distance,
+            angle_to_waypoint,
             0.0,  # default y position
             0.0   # default z position
         ])

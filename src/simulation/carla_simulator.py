@@ -314,6 +314,51 @@ class CarlaSimulator:
         
         return obstacles
 
+    def check_traffic_light(self) -> str:
+        """Check the state of the traffic light ahead of the vehicle."""
+        if not self.vehicle:
+            return 'unknown'
+            
+        # Get vehicle location and transform
+        vehicle_location = self.vehicle.get_location()
+        vehicle_transform = self.vehicle.get_transform()
+        
+        # Get all traffic lights in the world
+        traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
+        
+        # Find the nearest traffic light in front of the vehicle
+        nearest_light = None
+        min_distance = float('inf')
+        
+        for light in traffic_lights:
+            # Get traffic light location
+            light_location = light.get_location()
+            
+            # Calculate distance to traffic light
+            distance = vehicle_location.distance(light_location)
+            
+            # Check if traffic light is in front of the vehicle
+            vehicle_forward = vehicle_transform.get_forward_vector()
+            light_direction = light_location - vehicle_location
+            light_direction = light_direction.make_unit_vector()
+            
+            if vehicle_forward.dot(light_direction) > 0.5 and distance < 30.0:  # Only consider lights within 30 meters in front
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_light = light
+        
+        # If we found a traffic light, check its state
+        if nearest_light and min_distance < 10.0:  # Only consider lights within 10 meters
+            state = nearest_light.get_state()
+            if state == carla.TrafficLightState.Green:
+                return 'green'
+            elif state == carla.TrafficLightState.Yellow:
+                return 'yellow'
+            else:
+                return 'red'
+        
+        return 'unknown'
+
     def run(self):
         """Run the simulation."""
         try:
@@ -442,6 +487,7 @@ class CarlaSimulator:
                     print(f"Vehicle rotation: {vehicle_rotation}")
                     print(f"Number of obstacles detected: {len(obstacles)}")
                     print(f"Steering angle: {steer:.2f}")
+                    print(f"Traffic light state: {traffic_light_state}")
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
