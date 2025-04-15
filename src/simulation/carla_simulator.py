@@ -23,6 +23,9 @@ class CarlaSimulator:
             self.other_vehicles = []
             self.walker_controllers = []
             self.obstacle_avoidance = ObstacleAvoidance()
+            self.steering = 0.0  # Initialize steering attribute
+            self.throttle = 0.0  # Initialize throttle attribute
+            self.brake = 0.0     # Initialize brake attribute
             
         except Exception as e:
             print(f"Error initializing CARLA simulator: {e}")
@@ -408,7 +411,6 @@ class CarlaSimulator:
                         return 0.0, 1.0  # Full brake
         
         # Rest of the existing throttle/brake calculation code
-        // ... existing code ...
 
     def run(self):
         """Run the simulation."""
