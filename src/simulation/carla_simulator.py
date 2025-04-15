@@ -44,8 +44,8 @@ class CarlaSimulator:
             if self.world is None:
                 raise RuntimeError("Failed to get CARLA world")
             
-            # Change to Town01 (simple map with straight roads)
-            self.client.load_world('Town01')
+            # Change to Town03 (map with multiple lanes)
+            self.client.load_world('Town03')
             self.world = self.client.get_world()
             
             # Set synchronous mode
@@ -61,7 +61,7 @@ class CarlaSimulator:
             self.traffic_manager.set_hybrid_physics_mode(True)
             self.traffic_manager.set_hybrid_physics_radius(70.0)
             
-            print("Simulator initialized successfully with Town01 map")
+            print("Simulator initialized successfully with Town03 map")
             return True
         except Exception as e:
             print(f"Error initializing simulator: {e}")
