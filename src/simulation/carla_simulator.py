@@ -1114,20 +1114,20 @@ class CarlaSimulator:
             angle = -angle
             
         # More conservative steering calculation for better corner handling
-        max_steer = 0.2  # Reduced from 0.3 for smoother turns
-        angle_threshold = 20.0  # Increased from 15.0 for more gradual response
+        max_steer = 0.15  # Reduced from 0.2 for smoother turns
+        angle_threshold = 25.0  # Increased from 20.0 for more gradual response
         
         # Calculate base steering with more gradual response
         if abs(angle) > angle_threshold:
             # More gradual recovery behavior for high angles
-            steer = max_steer * (angle / abs(angle)) * 0.8  # Reduced from 1.0
+            steer = max_steer * (angle / abs(angle)) * 0.6  # Reduced from 0.8
         else:
             # Normal steering with more gradual transitions
-            steer = (angle / angle_threshold) * max_steer * 0.7  # Reduced from 1.0
+            steer = (angle / angle_threshold) * max_steer * 0.5  # Reduced from 0.7
             
         # Apply smoothing to steering with increased smoothing factor
         if hasattr(self, 'last_steer'):
-            smoothing_factor = 0.9  # Increased from 0.8 for smoother transitions
+            smoothing_factor = 0.95  # Increased from 0.9 for smoother transitions
             steer = smoothing_factor * self.last_steer + (1 - smoothing_factor) * steer
             
         self.last_steer = steer
@@ -1157,12 +1157,12 @@ class CarlaSimulator:
              math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
         ))
         
-        # More gradual speed reduction based on angle
+        # More aggressive speed reduction based on angle
         if abs(angle) > 30.0:  # Increased from 20.0
-            target_velocity *= 0.95  # Increased from 0.9 for less aggressive slowing
+            target_velocity *= 0.7  # Reduced from 0.95 for sharper turns
         elif abs(angle) > 15.0:  # Increased from 10.0
-            target_velocity *= 0.98  # Increased from 0.95 for less aggressive slowing
-            
+            target_velocity *= 0.85  # Reduced from 0.98 for sharper turns
+        
         # Check for obstacles with different handling for different types
         min_speed = 5.0  # Minimum speed in km/h
         for actor in self.world.get_actors():
@@ -1172,11 +1172,11 @@ class CarlaSimulator:
                 if distance < 15.0:  # Reduced from 20.0 for more focused detection
                     # Less aggressive speed reduction for pedestrians
                     if distance < 5.0:  # Very close
-                        target_velocity = max(min_speed, target_velocity * 0.9)  # Increased from 0.8
+                        target_velocity = max(min_speed, target_velocity * 0.8)  # Increased from 0.7
                     elif distance < 10.0:  # Moderately close
-                        target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
+                        target_velocity = max(min_speed, target_velocity * 0.9)  # Increased from 0.8
                     else:  # Far but detected
-                        target_velocity = max(min_speed, target_velocity * 0.98)  # Increased from 0.95
+                        target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
                     break
             # Handle parked cars differently
             elif actor.type_id.startswith('vehicle.') and actor != self.vehicle:
@@ -1187,21 +1187,21 @@ class CarlaSimulator:
                     if velocity < 0.1:  # Consider it parked if velocity is very low
                         # Less aggressive speed reduction for parked cars
                         if distance < 5.0:  # Very close
-                            target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
+                            target_velocity = max(min_speed, target_velocity * 0.9)  # Increased from 0.8
                         else:  # Moderately close
-                            target_velocity = max(min_speed, target_velocity * 0.98)  # Increased from 0.95
+                            target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
                     else:  # Moving vehicle
                         # More aggressive reduction for moving vehicles
                         if distance < 5.0:
-                            target_velocity = max(min_speed, target_velocity * 0.8)
+                            target_velocity = max(min_speed, target_velocity * 0.7)
                         elif distance < 10.0:
-                            target_velocity = max(min_speed, target_velocity * 0.9)
+                            target_velocity = max(min_speed, target_velocity * 0.8)
                     break
         
         # Calculate throttle and brake with more gradual acceleration
         if speed_diff > 0:
             # Accelerate more gradually
-            throttle = min(0.8, speed_diff / target_velocity)  # Increased from 0.7
+            throttle = min(0.6, speed_diff / target_velocity)  # Reduced from 0.8
             brake = 0.0
         else:
             # Only brake when significantly over target speed
@@ -1210,10 +1210,10 @@ class CarlaSimulator:
             
         # Apply smoothing to throttle and brake with increased smoothing
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.9  # Increased from 0.8 for smoother acceleration
+            smoothing_factor = 0.95  # Increased from 0.9 for smoother acceleration
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.9  # Increased from 0.8
+            smoothing_factor = 0.95  # Increased from 0.9
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
             
         self.last_throttle = throttle
