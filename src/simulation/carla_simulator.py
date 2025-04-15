@@ -1157,11 +1157,11 @@ class CarlaSimulator:
              math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
         ))
         
-        # More aggressive speed reduction based on angle
+        # More gradual speed reduction based on angle
         if abs(angle) > 30.0:  # Increased from 20.0
-            target_velocity *= 0.7  # Reduced from 0.95 for sharper turns
+            target_velocity *= 0.9  # Increased from 0.7 for better speed maintenance
         elif abs(angle) > 15.0:  # Increased from 10.0
-            target_velocity *= 0.85  # Reduced from 0.98 for sharper turns
+            target_velocity *= 0.95  # Increased from 0.85 for better speed maintenance
         
         # Check for obstacles with different handling for different types
         min_speed = 5.0  # Minimum speed in km/h
@@ -1198,22 +1198,22 @@ class CarlaSimulator:
                             target_velocity = max(min_speed, target_velocity * 0.8)
                     break
         
-        # Calculate throttle and brake with more gradual acceleration
+        # Calculate throttle and brake with more aggressive acceleration
         if speed_diff > 0:
-            # Accelerate more gradually
-            throttle = min(0.6, speed_diff / target_velocity)  # Reduced from 0.8
+            # Accelerate more aggressively
+            throttle = min(0.8, speed_diff / target_velocity)  # Increased from 0.6
             brake = 0.0
         else:
             # Only brake when significantly over target speed
             throttle = 0.0
-            brake = min(0.1, abs(speed_diff) / target_velocity)  # Reduced from 0.2
+            brake = min(0.05, abs(speed_diff) / target_velocity)  # Reduced from 0.1
             
-        # Apply smoothing to throttle and brake with increased smoothing
+        # Apply smoothing to throttle and brake with reduced smoothing for more responsive control
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.95  # Increased from 0.9 for smoother acceleration
+            smoothing_factor = 0.8  # Reduced from 0.95 for more responsive acceleration
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.95  # Increased from 0.9
+            smoothing_factor = 0.8  # Reduced from 0.95
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
             
         self.last_throttle = throttle
