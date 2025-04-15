@@ -16,6 +16,55 @@ class EthicalEngine:
         self.trolley_scenarios = []
         self.current_hazard = None
 
+    def evaluate_decision(self, decision: Dict[str, Any], 
+                         sensor_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Evaluate and modify decisions based on ethical considerations."""
+        # Get the base decision
+        ethical_decision = decision.copy()
+        
+        # Get controls from the decision dictionary
+        controls = ethical_decision.get('controls', {})
+        throttle = controls.get('throttle', 0.0)
+        brake = controls.get('brake', 0.0)
+        steer = controls.get('steer', 0.0)
+        
+        # Get ethical weights
+        ethical_weights = ethical_decision.get('ethical_weights', {})
+        pedestrian_safety = ethical_weights.get('pedestrian_safety', 0.0)
+        passenger_safety = ethical_weights.get('passenger_safety', 0.0)
+        other_vehicle_safety = ethical_weights.get('other_vehicle_safety', 0.0)
+        property_damage = ethical_weights.get('property_damage', 0.0)
+        traffic_rules = ethical_weights.get('traffic_rules', 0.0)
+        
+        # Get trolley decision
+        trolley_decision = ethical_decision.get('trolley_decision', {})
+        continue_straight = trolley_decision.get('continue_straight', 0.0)
+        swerve_left = trolley_decision.get('swerve_left', 0.0)
+        swerve_right = trolley_decision.get('swerve_right', 0.0)
+        
+        # Apply ethical modifications
+        if pedestrian_safety > 0.7:  # High pedestrian safety priority
+            throttle *= 0.5
+            brake *= 1.2
+        
+        if passenger_safety > 0.7:  # High passenger safety priority
+            throttle *= 0.8
+            brake *= 1.1
+        
+        if other_vehicle_safety > 0.7:  # High other vehicle safety priority
+            throttle *= 0.7
+            brake *= 1.1
+        
+        if property_damage > 0.7:  # High property damage priority
+            throttle *= 0.6
+            brake *= 1.2
+        
+        if traffic_rules > 0.7:  # High traffic rules priority
+            throttle *= 0.9
+            brake *= 1.1
+        
+        # Update the controls in the decision
+        ethical_decision['controls'] = {
     def evaluate_decision(self, decision: Dict[str, Any], sensor_data: Dict[str, Any]) -> Dict[str, Any]:
         """Evaluate a decision based on ethical considerations."""
         # Calculate risk scores
