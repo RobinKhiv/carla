@@ -1159,40 +1159,41 @@ class CarlaSimulator:
         
         # More conservative speed reduction based on angle
         if abs(angle) > 30.0:  # Increased from 20.0
-            target_velocity *= 0.7  # Increased from 0.5 for less aggressive slowing
-        elif abs(angle) > 15.0:  # Increased from 10.0
             target_velocity *= 0.8  # Increased from 0.7 for less aggressive slowing
+        elif abs(angle) > 15.0:  # Increased from 10.0
+            target_velocity *= 0.9  # Increased from 0.8 for less aggressive slowing
             
         # Check for pedestrians with less aggressive slowing
+        min_speed = 5.0  # Minimum speed in km/h
         for actor in self.world.get_actors():
             if actor.type_id.startswith('walker.pedestrian'):
                 distance = actor.get_location().distance(vehicle_location)
-                if distance < 20.0:  # Increased from 10.0 for earlier detection
+                if distance < 15.0:  # Reduced from 20.0 for more focused detection
                     # Less aggressive speed reduction for pedestrians
-                    if distance < 10.0:  # Very close
-                        target_velocity *= 0.6  # Reduced from 0.3
-                    elif distance < 15.0:  # Moderately close
-                        target_velocity *= 0.7  # Reduced from 0.5
+                    if distance < 5.0:  # Very close
+                        target_velocity = max(min_speed, target_velocity * 0.7)  # Reduced from 0.6
+                    elif distance < 10.0:  # Moderately close
+                        target_velocity = max(min_speed, target_velocity * 0.8)  # Reduced from 0.7
                     else:  # Far but detected
-                        target_velocity *= 0.8  # Reduced from 0.7
+                        target_velocity = max(min_speed, target_velocity * 0.9)  # Reduced from 0.8
                     break
         
         # Calculate throttle and brake with more aggressive acceleration
         if speed_diff > 0:
             # Accelerate more aggressively
-            throttle = min(0.7, speed_diff / target_velocity)  # Increased from 0.5
+            throttle = min(0.8, speed_diff / target_velocity)  # Increased from 0.7
             brake = 0.0
         else:
             # Only brake when significantly over target speed
             throttle = 0.0
-            brake = min(0.3, abs(speed_diff) / target_velocity)  # Reduced from 0.5
+            brake = min(0.2, abs(speed_diff) / target_velocity)  # Reduced from 0.3
             
         # Apply smoothing to throttle and brake with reduced smoothing
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.7  # Reduced from 0.8 for more responsive acceleration
+            smoothing_factor = 0.6  # Reduced from 0.7 for more responsive acceleration
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.7  # Reduced from 0.8
+            smoothing_factor = 0.6  # Reduced from 0.7
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
             
         self.last_throttle = throttle
