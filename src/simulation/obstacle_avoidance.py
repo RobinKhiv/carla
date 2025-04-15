@@ -68,6 +68,24 @@ class ObstacleAvoidance:
         y_brake.append(0.5)     # strong brake
         y_steer.append(0.0)     # go straight
         
+        # Case 8: Pedestrian far ahead
+        X.append([0.5, 0.4, 0.0, 0.0, 0.0])  # medium speed, pedestrian far
+        y_throttle.append(0.2)  # reduce speed gradually
+        y_brake.append(0.0)     # no brake
+        y_steer.append(0.0)     # go straight
+        
+        # Case 9: Pedestrian close ahead
+        X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, pedestrian close
+        y_throttle.append(0.0)  # no throttle
+        y_brake.append(0.2)     # gentle brake
+        y_steer.append(0.0)     # go straight
+        
+        # Case 10: Pedestrian not in path
+        X.append([0.5, 0.3, 0.5, 0.0, 0.0])  # medium speed, pedestrian not in path
+        y_throttle.append(0.3)  # maintain speed
+        y_brake.append(0.0)     # no brake
+        y_steer.append(0.0)     # go straight
+        
         # Convert to numpy arrays
         X = np.array(X)
         y_throttle = np.array(y_throttle)

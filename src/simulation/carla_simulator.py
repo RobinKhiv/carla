@@ -445,23 +445,59 @@ class CarlaSimulator:
                     
                     # Check for vehicles in front
                     nearest_vehicle = None
-                    min_distance = float('inf')
+                    min_vehicle_distance = float('inf')
                     for obstacle in obstacles:
                         if obstacle[2] == 'vehicle':  # If it's a vehicle
                             distance = obstacle[1]
-                            if distance < min_distance:
-                                min_distance = distance
+                            if distance < min_vehicle_distance:
+                                min_vehicle_distance = distance
                                 nearest_vehicle = obstacle
                     
                     # If there's a vehicle in front within 10 meters, slow down
-                    if nearest_vehicle and min_distance < 10.0:
-                        print(f"Vehicle detected {min_distance:.2f} meters ahead, slowing down...")
+                    if nearest_vehicle and min_vehicle_distance < 10.0:
+                        print(f"Vehicle detected {min_vehicle_distance:.2f} meters ahead, slowing down...")
                         control = carla.VehicleControl()
                         control.throttle = 0.0
                         control.brake = 0.3
                         control.steer = 0.0
                         self.vehicle.apply_control(control)
                         continue
+                    
+                    # Check for pedestrians
+                    nearest_pedestrian = None
+                    min_pedestrian_distance = float('inf')
+                    for obstacle in obstacles:
+                        if obstacle[2] == 'pedestrian':  # If it's a pedestrian
+                            distance = obstacle[1]
+                            if distance < min_pedestrian_distance:
+                                min_pedestrian_distance = distance
+                                nearest_pedestrian = obstacle
+                    
+                    # Handle pedestrians more intelligently
+                    if nearest_pedestrian and min_pedestrian_distance < 20.0:  # Detect pedestrians within 20 meters
+                        # Calculate if pedestrian is in the vehicle's path
+                        vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                        pedestrian_location = nearest_pedestrian[0]
+                        pedestrian_direction = carla.Location(
+                            pedestrian_location[0] - vehicle_location[0],
+                            pedestrian_location[1] - vehicle_location[1],
+                            0
+                        ).make_unit_vector()
+                        
+                        # Calculate angle between vehicle direction and pedestrian
+                        angle = math.degrees(math.acos(vehicle_forward.dot(pedestrian_direction)))
+                        
+                        # If pedestrian is in front (within 30 degrees) and close
+                        if angle < 30.0 and min_pedestrian_distance < 10.0:
+                            print(f"Pedestrian detected {min_pedestrian_distance:.2f} meters ahead, slowing down...")
+                            control = carla.VehicleControl()
+                            control.throttle = 0.0
+                            control.brake = 0.2  # Gentle braking
+                            control.steer = 0.0
+                            self.vehicle.apply_control(control)
+                            continue
+                        else:
+                            print(f"Pedestrian detected but not in path, continuing...")
                     
                     # Get control from obstacle avoidance model
                     throttle, brake, steer = self.obstacle_avoidance.predict_control(
