@@ -524,18 +524,33 @@ class CarlaSimulator:
                     current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
                     
                     # Check for traffic lights
-                    traffic_light = current_waypoint.get_landmarks(5.0, False, '1000001')  # Get traffic lights within 5 meters
-                    if traffic_light:
-                        light = traffic_light[0]  # Get the first traffic light
-                        if light:
-                            state = light.get_state()
-                            if state == carla.TrafficLightState.Red or state == carla.TrafficLightState.Yellow:
-                                print(f"Traffic light is {state}, stopping...")
-                                control.throttle = 0.0
-                                control.brake = 1.0
-                                control.steer = 0.0
-                                self.vehicle.apply_control(control)
-                                continue
+                    traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
+                    for light in traffic_lights:
+                        # Get traffic light location
+                        light_location = light.get_location()
+                        
+                        # Get the waypoint at the traffic light
+                        light_waypoint = self.world.get_map().get_waypoint(light_location)
+                        
+                        # Check if the traffic light is in the same lane as the vehicle
+                        if light_waypoint and light_waypoint.lane_id == current_waypoint.lane_id:
+                            # Calculate distance to traffic light
+                            distance = self.vehicle.get_location().distance(light_location)
+                            
+                            # Check if traffic light is in front of the vehicle
+                            vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                            light_direction = light_location - self.vehicle.get_location()
+                            light_direction = light_direction.make_unit_vector()
+                            
+                            if vehicle_forward.dot(light_direction) > 0.5 and distance < 15.0:  # Check within 15 meters
+                                state = light.get_state()
+                                if state == carla.TrafficLightState.Red or state == carla.TrafficLightState.Yellow:
+                                    print(f"Traffic light is {state}, stopping...")
+                                    control.throttle = 0.0
+                                    control.brake = 1.0
+                                    control.steer = 0.0
+                                    self.vehicle.apply_control(control)
+                                    continue
                     
                     # Set target speed
                     target_speed = 20.0  # km/h
