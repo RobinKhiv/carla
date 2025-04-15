@@ -610,7 +610,7 @@ class CarlaSimulator:
                         print(f"\rEpisode: {episode}, Total Reward: {total_reward:.2f}, "
                               f"Speed: {speed:.2f} km/h, Position: ({vehicle_location[0]:.2f}, {vehicle_location[1]:.2f}), "
                               f"Obstacles: {len(obstacles)}, Steering: {final_steer:.2f}, "
-                              f"Epsilon: {self.rl_agent.epsilon:.2f}, Loss: {loss:.4f}", end="")
+                              f"Epsilon: {self.rl_agent.epsilon:.2f}, Loss: {loss if loss is not None else 0.0:.4f}", end="")
                         
                         if done:
                             episode += 1
