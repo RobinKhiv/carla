@@ -161,10 +161,15 @@ class ObstacleAvoidance:
         with torch.no_grad():
             output = self.model(input_tensor)
             
-        # Convert output to control values
-        throttle = (output[0] + 1) / 2  # Convert from [-1, 1] to [0, 1]
-        brake = (output[1] + 1) / 2     # Convert from [-1, 1] to [0, 1]
-        steer = output[2]                # Already in [-1, 1]
+        # Convert output to Python floats
+        throttle = float((output[0].item() + 1) / 2)  # Convert from [-1, 1] to [0, 1]
+        brake = float((output[1].item() + 1) / 2)     # Convert from [-1, 1] to [0, 1]
+        steer = float(output[2].item())                # Already in [-1, 1]
+        
+        # Clip values to ensure they're within valid ranges
+        throttle = max(0.0, min(1.0, throttle))
+        brake = max(0.0, min(1.0, brake))
+        steer = max(-1.0, min(1.0, steer))
         
         return throttle, brake, steer
     
