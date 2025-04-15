@@ -408,7 +408,10 @@ class CarlaSimulator:
                     # If obstacle is in front (within 30 degrees)
                     if angle < 30.0:
                         print(f"Static obstacle detected {distance:.2f} meters ahead, stopping...")
-                        return 0.0, 1.0  # Full brake
+                        # Apply full brake and zero throttle
+                        self.throttle = 0.0
+                        self.brake = 1.0
+                        return self.throttle, self.brake
         
         # Calculate speed difference
         speed_diff = target_velocity - current_velocity
