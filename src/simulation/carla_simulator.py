@@ -551,8 +551,10 @@ class CarlaSimulator:
                     y=start_location.y,
                     z=start_location.z
                 )
-                waypoint_transform = carla.Transform(waypoint_location)
-                waypoints.append(waypoint_transform)
+                # Create a waypoint using the map
+                waypoint = self.world.get_map().get_waypoint(waypoint_location)
+                if waypoint:
+                    waypoints.append(waypoint)
             
             # Initialize sensor manager if not already done
             if not self.sensor_manager:
@@ -658,7 +660,7 @@ class CarlaSimulator:
                             next_waypoint = waypoints[current_waypoint_index]
                             
                             # Calculate distance to next waypoint
-                            distance = self.vehicle.get_location().distance(next_waypoint.location)
+                            distance = self.vehicle.get_location().distance(next_waypoint.transform.location)
                             if distance < 5.0:  # If within 5 meters of waypoint, move to next
                                 current_waypoint_index += 1
                                 if current_waypoint_index >= len(waypoints):
@@ -668,7 +670,7 @@ class CarlaSimulator:
                                 next_waypoint = waypoints[current_waypoint_index]
                         
                         # Calculate angle to waypoint
-                        waypoint_location = next_waypoint.location
+                        waypoint_location = next_waypoint.transform.location
                         waypoint_vector = np.array([waypoint_location.x - self.vehicle.get_location().x,
                                                   waypoint_location.y - self.vehicle.get_location().y])
                         vehicle_vector = np.array([np.cos(np.radians(self.vehicle.get_transform().rotation.yaw)),
@@ -714,7 +716,7 @@ class CarlaSimulator:
                         print(f"Vehicle rotation: {transform.rotation}")
                         
                         # Print waypoint information
-                        print(f"Current waypoint: {next_waypoint.location}")
+                        print(f"Current waypoint: {next_waypoint.transform.location}")
                         
                     except Exception as e:
                         print(f"Error applying controls: {e}")
