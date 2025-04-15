@@ -324,4 +324,40 @@ class MLManager:
         if 'rl_models' in checkpoint:
             self.rl_manager.q_network.load_state_dict(checkpoint['rl_models']['q_network'])
             self.rl_manager.policy_network.load_state_dict(checkpoint['rl_models']['policy_network'])
-            self.rl_manager.target_q_network.load_state_dict(checkpoint['rl_models']['target_q_network']) 
+            self.rl_manager.target_q_network.load_state_dict(checkpoint['rl_models']['target_q_network'])
+
+    def evaluate_ethics(self, processed_features: torch.Tensor) -> Dict[str, Any]:
+        """Evaluate ethical considerations based on processed features."""
+        with torch.no_grad():
+            # Ensure features are in the correct format
+            if isinstance(processed_features, tuple):
+                processed_features = processed_features[0]
+            if not isinstance(processed_features, torch.Tensor):
+                processed_features = torch.tensor(processed_features, dtype=torch.float32)
+            if len(processed_features.shape) == 1:
+                processed_features = processed_features.unsqueeze(0)
+            
+            # Get ethical considerations
+            priorities, trolley_decision = self.ethical_model(processed_features)
+            
+            # Convert tensors to Python scalars
+            priorities = priorities.squeeze().cpu().numpy()
+            trolley_decision = trolley_decision.squeeze().cpu().numpy()
+            
+            # Convert to ethical evaluation dictionary
+            ethics = {
+                'ethical_weights': {
+                    'pedestrian_safety': float(priorities[0]),
+                    'passenger_safety': float(priorities[1]),
+                    'other_vehicle_safety': float(priorities[2]),
+                    'property_damage': float(priorities[3]),
+                    'traffic_rules': float(priorities[4])
+                },
+                'trolley_decision': {
+                    'continue_straight': float(trolley_decision[0]),
+                    'swerve_left': float(trolley_decision[1]),
+                    'swerve_right': float(trolley_decision[2])
+                }
+            }
+            
+            return ethics 
