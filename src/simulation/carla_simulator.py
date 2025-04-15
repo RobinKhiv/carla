@@ -605,14 +605,34 @@ class CarlaSimulator:
                             print("Warning: Vehicle is not on road")
                             continue
                         
-                        # Get next waypoint with improved lookahead
-                        lookahead_distance = 15.0  # Increased from 10.0
-                        next_waypoint = current_waypoint.next(lookahead_distance)[0]
-                        if next_waypoint is None:
-                            print("Warning: No next waypoint found")
-                            continue
+                        # Get next waypoint with adjusted lookahead distance
+                        lookahead_distance = 10.0  # Reduced from 15.0 for more immediate response
+                        next_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location(), project_to_road=True, lane_type=carla.LaneType.Driving)
+                        for _ in range(3):  # Look ahead 3 waypoints instead of 5
+                            next_waypoint = next_waypoint.next(lookahead_distance)[0]
                         
-                        # Calculate road curvature with improved smoothing
+                        # Calculate angle to waypoint with improved accuracy
+                        waypoint_location = next_waypoint.transform.location
+                        waypoint_vector = np.array([waypoint_location.x - self.vehicle.get_location().x,
+                                                  waypoint_location.y - self.vehicle.get_location().y])
+                        vehicle_vector = np.array([np.cos(np.radians(self.vehicle.get_transform().rotation.yaw)),
+                                                 np.sin(np.radians(self.vehicle.get_transform().rotation.yaw))])
+                        
+                        # Normalize vectors and calculate angle
+                        waypoint_vector = waypoint_vector / np.linalg.norm(waypoint_vector)
+                        vehicle_vector = vehicle_vector / np.linalg.norm(vehicle_vector)
+                        angle = np.degrees(np.arccos(np.clip(np.dot(vehicle_vector, waypoint_vector), -1.0, 1.0)))
+                        
+                        # Determine turn direction with improved accuracy
+                        cross_product = np.cross(vehicle_vector, waypoint_vector)
+                        turn_direction = -1.0 if cross_product < 0 else 1.0
+                        
+                        # Calculate steering with improved smoothing and limits
+                        max_steer = 0.05  # Reduced from 0.08 for much smoother steering
+                        angle_factor = min(1.0, angle / 15.0)  # Reduced from 20.0 for earlier intervention
+                        base_steer = turn_direction * angle_factor * max_steer
+                        
+                        # Add road curvature influence with reduced weight
                         road_curvature = 0.0
                         try:
                             # Get multiple waypoints ahead with increased distance
@@ -632,44 +652,6 @@ class CarlaSimulator:
                                 road_curvature = max(-0.8, min(0.8, road_curvature * 0.6))  # Reduced sensitivity
                         except Exception as e:
                             print(f"Error calculating road curvature: {e}")
-                        
-                        # Get vehicle transform
-                        vehicle_transform = self.vehicle.get_transform()
-                        vehicle_location = vehicle_transform.location
-                        vehicle_rotation = vehicle_transform.rotation
-                        
-                        # Calculate direction to next waypoint with improved accuracy
-                        next_location = next_waypoint.transform.location
-                        direction = next_location - vehicle_location
-                        direction = direction.make_unit_vector()
-                        
-                        # Calculate vehicle forward vector
-                        vehicle_forward = carla.Vector3D(
-                            math.cos(math.radians(vehicle_rotation.yaw)),
-                            math.sin(math.radians(vehicle_rotation.yaw)),
-                            0
-                        )
-                        
-                        # Calculate angle between vehicle forward vector and direction to next waypoint
-                        dot_product = vehicle_forward.dot(direction)
-                        angle = math.degrees(math.acos(max(-1.0, min(1.0, dot_product))))
-                        
-                        # Calculate cross product to determine turn direction
-                        cross_product = vehicle_forward.cross(direction)
-                        turn_direction = -1.0 if cross_product.z < 0 else 1.0
-                        
-                        # Calculate steering with improved smoothing and limits
-                        max_steer = 0.08  # Reduced from 0.12 for much smoother steering
-                        angle_factor = min(1.0, angle / 20.0)  # Reduced from 25.0 for earlier intervention
-                        base_steer = turn_direction * angle_factor * max_steer
-                        
-                        # Add road curvature influence with reduced weight
-                        base_steer += road_curvature * 0.01  # Reduced from 0.02
-                        
-                        # Apply stronger smoothing to steering
-                        if hasattr(self, 'last_steer'):
-                            base_steer = self.last_steer * 0.995 + base_steer * 0.005  # Increased smoothing from 0.99/0.01
-                        self.last_steer = base_steer
                         
                         # Add lane keeping behavior with improved stability
                         lane_center_offset = 0.0
