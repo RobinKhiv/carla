@@ -608,13 +608,19 @@ class CarlaSimulator:
                             0
                         )
                         
-                        # Calculate cross product to determine turn direction
-                        cross = vehicle_forward.cross(direction)
-                        turn_direction = -1 if cross.z < 0 else 1
-                        
                         # Calculate angle between vehicle forward vector and direction to next waypoint
                         dot_product = vehicle_forward.dot(direction)
                         angle = math.degrees(math.acos(max(-1.0, min(1.0, dot_product))))
+                        
+                        # Calculate turn direction using the angle between vectors
+                        # If the next waypoint is to the right of the vehicle's forward vector, steer right
+                        # If it's to the left, steer left
+                        right_vector = carla.Vector3D(
+                            -vehicle_forward.y,
+                            vehicle_forward.x,
+                            0
+                        )
+                        turn_direction = 1 if right_vector.dot(direction) > 0 else -1
                         
                         # Calculate steering based on angle and turn direction
                         max_steer = 0.8  # Increased max steering
