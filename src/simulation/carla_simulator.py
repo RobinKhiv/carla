@@ -1144,6 +1144,53 @@ class CarlaSimulator:
         vehicle_location = vehicle_transform.location
         vehicle_rotation = vehicle_transform.rotation
         
+        # Check if vehicle is stuck (no movement despite throttle)
+        if hasattr(self, 'last_position'):
+            distance_moved = vehicle_location.distance(self.last_position)
+            if distance_moved < 0.1 and current_velocity < 1.0:  # Vehicle hasn't moved much and is very slow
+                # Check if we're near a parked car
+                near_parked_car = False
+                for actor in self.world.get_actors():
+                    if actor.type_id.startswith('vehicle.') and actor != self.vehicle:
+                        distance = actor.get_location().distance(vehicle_location)
+                        velocity = actor.get_velocity().length()
+                        if distance < 5.0 and velocity < 0.1:  # Close to a parked car
+                            near_parked_car = True
+                            break
+                
+                if near_parked_car:
+                    # More aggressive unstuck behavior when near parked cars
+                    if hasattr(self, 'stuck_counter'):
+                        self.stuck_counter += 1
+                    else:
+                        self.stuck_counter = 1
+                        
+                    if self.stuck_counter > 3:  # Reduced from 5 for faster response
+                        # Apply reverse throttle and steering to get unstuck
+                        throttle = -0.7  # Increased reverse throttle
+                        brake = 0.0
+                        # Add more aggressive random steering
+                        steer = random.uniform(-0.5, 0.5)  # Increased steering range
+                        print("Vehicle appears to be stuck near parked car, attempting to get unstuck")
+                        return throttle, brake
+                else:
+                    # Normal stuck behavior
+                    if hasattr(self, 'stuck_counter'):
+                        self.stuck_counter += 1
+                    else:
+                        self.stuck_counter = 1
+                        
+                    if self.stuck_counter > 5:
+                        throttle = -0.5
+                        brake = 0.0
+                        steer = random.uniform(-0.3, 0.3)
+                        print("Vehicle appears to be stuck, attempting to get unstuck")
+                        return throttle, brake
+            else:
+                self.stuck_counter = 0
+        
+        self.last_position = vehicle_location
+        
         # Calculate vector to next waypoint
         waypoint_vector = carla.Location(
             next_waypoint.transform.location.x - vehicle_location.x,
