@@ -39,14 +39,30 @@ class CarlaSimulator:
     def initialize(self):
         """Initialize the simulation environment and components."""
         try:
+            # Check if CARLA server is running
+            print("Connecting to CARLA server...")
+            self.client = carla.Client('localhost', 2000)
+            self.client.set_timeout(10.0)
+            
+            # Get available maps
+            available_maps = self.client.get_available_maps()
+            print(f"Available maps: {available_maps}")
+            
+            if not available_maps:
+                raise RuntimeError("No maps available in CARLA server")
+            
+            # Try to load Town03, fall back to Town01 if not available
+            try:
+                print("Loading Town03 map...")
+                self.client.load_world('Town03')
+            except Exception as e:
+                print(f"Failed to load Town03, trying Town01: {e}")
+                self.client.load_world('Town01')
+            
             # Get the world
             self.world = self.client.get_world()
             if self.world is None:
                 raise RuntimeError("Failed to get CARLA world")
-            
-            # Change to Town03 (map with multiple lanes)
-            self.client.load_world('Town03')
-            self.world = self.client.get_world()
             
             # Set synchronous mode
             settings = self.world.get_settings()
@@ -55,16 +71,25 @@ class CarlaSimulator:
             self.world.apply_settings(settings)
             
             # Initialize traffic manager with hybrid physics mode
+            print("Initializing traffic manager...")
             self.traffic_manager = self.client.get_trafficmanager()
+            if self.traffic_manager is None:
+                raise RuntimeError("Failed to get traffic manager")
+            
             self.traffic_manager.set_global_distance_to_leading_vehicle(2.0)
             self.traffic_manager.set_synchronous_mode(True)
             self.traffic_manager.set_hybrid_physics_mode(True)
             self.traffic_manager.set_hybrid_physics_radius(70.0)
             
-            print("Simulator initialized successfully with Town03 map")
+            print("Simulator initialized successfully")
             return True
+            
         except Exception as e:
             print(f"Error initializing simulator: {e}")
+            print("Please ensure that:")
+            print("1. CARLA server is running")
+            print("2. CARLA server is accessible at localhost:2000")
+            print("3. You have the correct version of CARLA installed")
             return False
 
     def spawn_vehicle(self) -> bool:
