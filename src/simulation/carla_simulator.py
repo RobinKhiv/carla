@@ -99,14 +99,16 @@ class CarlaSimulator:
                             # Set vehicle physics
                             self.vehicle.set_simulate_physics(True)
                             
-                            # Set vehicle to manual control
-                            self.vehicle.set_autopilot(False)
+                            # Set vehicle to autopilot with traffic manager
+                            self.vehicle.set_autopilot(True, self.traffic_manager.get_port())
                             
-                            # Register vehicle with traffic manager
+                            # Configure traffic manager settings
                             self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)  # Always obey traffic lights
                             self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)  # Maintain normal speed
                             self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)  # Safe following distance
                             self.traffic_manager.auto_lane_change(self.vehicle, False)  # Disable automatic lane changes
+                            self.traffic_manager.set_hybrid_physics_mode(True)  # Enable hybrid physics
+                            self.traffic_manager.set_hybrid_physics_radius(70.0)  # Set physics radius
                             
                             print("Vehicle registered with traffic manager")
                             return True
@@ -460,12 +462,6 @@ class CarlaSimulator:
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
             
-            # Configure traffic manager for ego vehicle
-            self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)  # Always obey traffic lights
-            self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)  # Maintain normal speed
-            self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)  # Safe following distance
-            self.traffic_manager.auto_lane_change(self.vehicle, False)  # Disable automatic lane changes
-            
             # Set up camera
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
@@ -481,57 +477,12 @@ class CarlaSimulator:
                     # Update camera position
                     self.update_camera()
                     
-                    # Get current waypoint
-                    current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
-                    if current_waypoint is None:
-                        print("Warning: Vehicle is not on road")
-                        continue
-                    
-                    # Get next waypoint with error handling
-                    next_waypoints = current_waypoint.next(5.0)
-                    if not next_waypoints:
-                        print("Warning: No next waypoint found")
-                        # Try to get next waypoint with a shorter distance
-                        next_waypoints = current_waypoint.next(2.0)
-                        if not next_waypoints:
-                            print("Error: Cannot find next waypoint")
-                            continue
-                    
-                    next_waypoint = next_waypoints[0]
-                    
-                    # Calculate angle to next waypoint
-                    vehicle_transform = self.vehicle.get_transform()
-                    vehicle_location = vehicle_transform.location
-                    vehicle_forward = vehicle_transform.get_forward_vector()
-                    
-                    next_location = next_waypoint.transform.location
-                    direction = next_location - vehicle_location
-                    direction = direction.make_unit_vector()
-                    
-                    angle = math.degrees(math.acos(vehicle_forward.dot(direction)))
-                    
-                    # Calculate steering using CARLA's waypoint system
-                    steering = self._calculate_steering(angle)
-                    
-                    # Get vehicle velocity
-                    current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
-                    
-                    # Calculate throttle and brake using CARLA's traffic manager
-                    throttle, brake = self._calculate_throttle_brake(50.0, current_velocity, angle)
-                    
-                    # Create control command
-                    control = carla.VehicleControl()
-                    control.throttle = throttle
-                    control.brake = brake
-                    control.steer = steering
-                    
-                    # Apply control to vehicle
-                    self.vehicle.apply_control(control)
-                    
                     # Print vehicle state
-                    print(f"Vehicle velocity: {current_velocity:.2f} km/h")
-                    print(f"Vehicle position: {vehicle_location}")
-                    print(f"Steering angle: {steering:.2f}")
+                    if self.vehicle:
+                        current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
+                        vehicle_location = self.vehicle.get_location()
+                        print(f"Vehicle velocity: {current_velocity:.2f} km/h")
+                        print(f"Vehicle position: {vehicle_location}")
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
