@@ -243,77 +243,120 @@ class CarlaSimulator:
                 # Get pedestrian blueprints
                 walker_bp = self.world.get_blueprint_library().filter('walker.pedestrian.*')
                 
+                # Get all waypoints in the map
+                waypoints = self.world.get_map().generate_waypoints(1.0)  # 1.0 meters apart
+                
+                # Filter waypoints that are on sidewalks
+                sidewalk_waypoints = [wp for wp in waypoints if wp.is_junction or wp.lane_type == carla.LaneType.Sidewalk]
+                
+                if not sidewalk_waypoints:
+                    print("Warning: No sidewalk waypoints found")
+                    return
+                
                 # Scenario 1: Crosswalk scenario
-                crosswalk_location = self.world.get_map().get_waypoint(carla.Location(x=100, y=0, z=0))
-                if crosswalk_location:
+                crosswalk_waypoints = [wp for wp in sidewalk_waypoints if wp.is_junction]
+                if crosswalk_waypoints:
                     for i in range(10):  # 10 pedestrians at crosswalk
-                        try:
-                            # Spawn pedestrians on the crosswalk
-                            spawn_point = carla.Transform()
-                            spawn_point.location = crosswalk_location.transform.location
-                            spawn_point.location.x += random.uniform(-2, 2)
-                            spawn_point.location.y += random.uniform(-2, 2)
-                            
-                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                            if walker is not None:
-                                # Set pedestrian to walk across the street
-                                destination = carla.Location(
-                                    x=spawn_point.location.x,
-                                    y=spawn_point.location.y + 10.0,  # Walk across the street
-                                    z=spawn_point.location.z
-                                )
-                                walker.set_location(destination)
-                                self.pedestrians.append(walker)
-                        except Exception as e:
-                            print(f"Warning: Failed to spawn crosswalk pedestrian: {e}")
+                        max_retries = 5
+                        for retry in range(max_retries):
+                            try:
+                                # Select a random crosswalk waypoint
+                                spawn_waypoint = random.choice(crosswalk_waypoints)
+                                spawn_point = carla.Transform()
+                                spawn_point.location = spawn_waypoint.transform.location
+                                spawn_point.location.z += 0.5  # Raise slightly above ground
+                                
+                                # Check for collisions before spawning
+                                collision = False
+                                for actor in self.world.get_actors():
+                                    if actor.get_location().distance(spawn_point.location) < 2.0:
+                                        collision = True
+                                        break
+                                
+                                if not collision:
+                                    walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                                    if walker is not None:
+                                        # Find a destination waypoint across the street
+                                        next_waypoints = spawn_waypoint.next(5.0)
+                                        if next_waypoints:
+                                            destination = random.choice(next_waypoints).transform.location
+                                            destination.z = spawn_point.location.z
+                                            walker.set_location(destination)
+                                            self.pedestrians.append(walker)
+                                            break
+                            except Exception as e:
+                                if retry == max_retries - 1:
+                                    print(f"Warning: Failed to spawn crosswalk pedestrian after {max_retries} attempts: {e}")
                 
                 # Scenario 2: School zone scenario
-                school_zone_location = self.world.get_map().get_waypoint(carla.Location(x=200, y=0, z=0))
-                if school_zone_location:
+                school_zone_waypoints = [wp for wp in sidewalk_waypoints if not wp.is_junction]
+                if school_zone_waypoints:
                     for i in range(15):  # 15 pedestrians in school zone
-                        try:
-                            spawn_point = carla.Transform()
-                            spawn_point.location = school_zone_location.transform.location
-                            spawn_point.location.x += random.uniform(-5, 5)
-                            spawn_point.location.y += random.uniform(-5, 5)
-                            
-                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                            if walker is not None:
-                                # Set pedestrian to walk randomly in the area
-                                destination = carla.Location(
-                                    x=spawn_point.location.x + random.uniform(-10, 10),
-                                    y=spawn_point.location.y + random.uniform(-10, 10),
-                                    z=spawn_point.location.z
-                                )
-                                walker.set_location(destination)
-                                self.pedestrians.append(walker)
-                        except Exception as e:
-                            print(f"Warning: Failed to spawn school zone pedestrian: {e}")
+                        max_retries = 5
+                        for retry in range(max_retries):
+                            try:
+                                # Select a random sidewalk waypoint
+                                spawn_waypoint = random.choice(school_zone_waypoints)
+                                spawn_point = carla.Transform()
+                                spawn_point.location = spawn_waypoint.transform.location
+                                spawn_point.location.z += 0.5  # Raise slightly above ground
+                                
+                                # Check for collisions before spawning
+                                collision = False
+                                for actor in self.world.get_actors():
+                                    if actor.get_location().distance(spawn_point.location) < 2.0:
+                                        collision = True
+                                        break
+                                
+                                if not collision:
+                                    walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                                    if walker is not None:
+                                        # Find a destination waypoint along the sidewalk
+                                        next_waypoints = spawn_waypoint.next(10.0)
+                                        if next_waypoints:
+                                            destination = random.choice(next_waypoints).transform.location
+                                            destination.z = spawn_point.location.z
+                                            walker.set_location(destination)
+                                            self.pedestrians.append(walker)
+                                            break
+                            except Exception as e:
+                                if retry == max_retries - 1:
+                                    print(f"Warning: Failed to spawn school zone pedestrian after {max_retries} attempts: {e}")
                 
                 # Scenario 3: Busy intersection scenario
-                intersection_location = self.world.get_map().get_waypoint(carla.Location(x=300, y=0, z=0))
-                if intersection_location:
+                intersection_waypoints = [wp for wp in sidewalk_waypoints if wp.is_junction]
+                if intersection_waypoints:
                     for i in range(25):  # 25 pedestrians at intersection
-                        try:
-                            spawn_point = carla.Transform()
-                            spawn_point.location = intersection_location.transform.location
-                            spawn_point.location.x += random.uniform(-10, 10)
-                            spawn_point.location.y += random.uniform(-10, 10)
-                            
-                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                            if walker is not None:
-                                # Set pedestrian to walk in different directions
-                                angle = random.uniform(0, 360)
-                                distance = random.uniform(5, 15)
-                                destination = carla.Location(
-                                    x=spawn_point.location.x + distance * math.cos(math.radians(angle)),
-                                    y=spawn_point.location.y + distance * math.sin(math.radians(angle)),
-                                    z=spawn_point.location.z
-                                )
-                                walker.set_location(destination)
-                                self.pedestrians.append(walker)
-                        except Exception as e:
-                            print(f"Warning: Failed to spawn intersection pedestrian: {e}")
+                        max_retries = 5
+                        for retry in range(max_retries):
+                            try:
+                                # Select a random intersection waypoint
+                                spawn_waypoint = random.choice(intersection_waypoints)
+                                spawn_point = carla.Transform()
+                                spawn_point.location = spawn_waypoint.transform.location
+                                spawn_point.location.z += 0.5  # Raise slightly above ground
+                                
+                                # Check for collisions before spawning
+                                collision = False
+                                for actor in self.world.get_actors():
+                                    if actor.get_location().distance(spawn_point.location) < 2.0:
+                                        collision = True
+                                        break
+                                
+                                if not collision:
+                                    walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                                    if walker is not None:
+                                        # Find a destination waypoint in a random direction
+                                        next_waypoints = spawn_waypoint.next(15.0)
+                                        if next_waypoints:
+                                            destination = random.choice(next_waypoints).transform.location
+                                            destination.z = spawn_point.location.z
+                                            walker.set_location(destination)
+                                            self.pedestrians.append(walker)
+                                            break
+                            except Exception as e:
+                                if retry == max_retries - 1:
+                                    print(f"Warning: Failed to spawn intersection pedestrian after {max_retries} attempts: {e}")
                 
                 print(f"Spawned {num_vehicles} vehicles and {len(self.pedestrians)} pedestrians in various scenarios")
             except Exception as e:
