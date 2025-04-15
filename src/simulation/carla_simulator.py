@@ -462,6 +462,10 @@ class CarlaSimulator:
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
             
+            # Spawn traffic
+            print("Spawning traffic...")
+            self.spawn_traffic(10, 20)  # Spawn 10 vehicles and 20 pedestrians
+            
             # Set up camera
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
