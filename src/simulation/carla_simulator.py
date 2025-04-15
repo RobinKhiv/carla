@@ -733,6 +733,83 @@ class CarlaSimulator:
                             steer = 0.0
                             time.sleep(0.1)  # Reduced from 0.2
                         
+                        # Initialize obstacle detection
+                        obstacle_detected = False
+                        obstacle_distance = 15.0
+                        obstacle_steering = 0.0
+                        
+                        # Get vehicle's forward vector
+                        forward_vector = self.vehicle.get_transform().get_forward_vector()
+                        
+                        # Check for vehicles with improved detection
+                        for vehicle in self.world.get_actors().filter('vehicle.*'):
+                            if vehicle.id != self.vehicle.id:
+                                other_location = vehicle.get_location()
+                                distance = self.vehicle.get_location().distance(other_location)
+                                direction = other_location - self.vehicle.get_location()
+                                angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
+                                
+                                if distance < obstacle_distance and angle < 6.0:  # Reduced from 8.0 degrees
+                                    obstacle_detected = True
+                                    obstacle_distance = distance
+                                    relative_position = other_location - self.vehicle.get_location()
+                                    obstacle_steering = -0.006 * (relative_position.x / distance)  # Reduced from -0.008
+                        
+                        # Check for pedestrians with improved detection
+                        for pedestrian in self.world.get_actors().filter('walker.*'):
+                            ped_location = pedestrian.get_location()
+                            distance = self.vehicle.get_location().distance(ped_location)
+                            direction = ped_location - self.vehicle.get_location()
+                            angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
+                            
+                            if distance < obstacle_distance and angle < 6.0:  # Reduced from 8.0 degrees
+                                obstacle_detected = True
+                                obstacle_distance = distance
+                                relative_position = ped_location - self.vehicle.get_location()
+                                obstacle_steering = -0.006 * (relative_position.x / distance)  # Reduced from -0.008
+                        
+                        # Apply obstacle avoidance steering with improved smoothing
+                        if obstacle_detected:
+                            if hasattr(self, 'last_obstacle_steer'):
+                                obstacle_steering = self.last_obstacle_steer * 0.995 + obstacle_steering * 0.005  # Increased smoothing
+                            self.last_obstacle_steer = obstacle_steering
+                            steer += obstacle_steering  # Add obstacle avoidance steering to base steering
+                        
+                        # Calculate speed with improved responsiveness
+                        target_speed = 20.0  # Base target speed in km/h
+                        
+                        # Adjust speed based on angle with improved sensitivity
+                        angle_speed_factor = 1.0 - (angle / 45.0)  # Increased from 60.0 for earlier speed reduction
+                        target_speed *= angle_speed_factor
+                        
+                        # Adjust speed based on road curvature with improved response
+                        if abs(road_curvature) > 0.1:  # Reduced threshold from 0.2
+                            target_speed *= (1.0 - abs(road_curvature) * 2.0)  # Increased sensitivity
+                        
+                        # Ensure minimum speed for stability
+                        target_speed = max(5.0, target_speed)  # Increased from 3.0
+                        
+                        # Calculate throttle and brake with improved response
+                        current_speed = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
+                        speed_diff = target_speed - current_speed
+                        
+                        # More aggressive acceleration when far from target speed
+                        if speed_diff > 5.0:  # Reduced from 10.0
+                            throttle = min(1.0, speed_diff / 10.0)  # Increased from 20.0
+                            brake = 0.0
+                        # More responsive braking when overspeeding
+                        elif speed_diff < -5.0:  # Reduced from -10.0
+                            throttle = 0.0
+                            brake = min(1.0, abs(speed_diff) / 10.0)  # Increased from 20.0
+                        else:
+                            # Maintain current speed with finer control
+                            throttle = 0.1  # Reduced from 0.2
+                            brake = 0.0
+                        
+                        # Apply speed factor from recovery behavior
+                        if hasattr(self, 'speed_factor'):
+                            throttle *= self.speed_factor
+                        
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
                             throttle=float(throttle),
@@ -744,8 +821,8 @@ class CarlaSimulator:
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
                         print(f"Vehicle angle to waypoint: {angle} degrees")
                         print(f"Obstacle detected: {obstacle_detected}")
-                        print(f"Current velocity: {current_velocity} m/s")
-                        print(f"Vehicle pitch: {pitch}, roll: {roll}")
+                        print(f"Current velocity: {current_speed:.2f} km/h")
+                        print(f"Vehicle pitch: {pitch:.1f}°, roll: {roll:.1f}°")
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
