@@ -298,40 +298,47 @@ class CarlaSimulator:
             return False
 
     def update_camera(self):
-        """Update the camera position to follow the vehicle."""
-        try:
-            if not self.vehicle or not self.spectator:
-                return
-
-            # Get vehicle transform
-            vehicle_transform = self.vehicle.get_transform()
-            
-            # Get vehicle's forward vector
-            yaw = math.radians(vehicle_transform.rotation.yaw)
-            forward_vector = carla.Location(
-                x=math.cos(yaw),
-                y=math.sin(yaw),
-                z=0
-            )
-            
-            # Calculate camera position (behind and above the vehicle)
-            # Position the camera closer to the vehicle for better following
-            camera_location = vehicle_transform.location + carla.Location(
-                x=-8.0 * forward_vector.x,  # Reduced from -10.0 to -8.0
-                y=-8.0 * forward_vector.y,  # Reduced from -10.0 to -8.0
-                z=3.0  # Reduced from 5.0 to 3.0 for better view
-            )
-            
-            # Calculate camera rotation to look at vehicle
-            camera_rotation = carla.Rotation(
-                pitch=-15.0,  # Reduced from -20.0 for better view
-                yaw=vehicle_transform.rotation.yaw
-            )
-            
-            # Set spectator transform
-            self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
-        except Exception as e:
-            print(f"Error updating camera: {e}")
+        """Update camera position and orientation"""
+        if self.vehicle and self.spectator:
+            try:
+                # Get vehicle transform
+                vehicle_transform = self.vehicle.get_transform()
+                
+                # Calculate camera position (behind and above vehicle)
+                camera_location = carla.Location(
+                    x=vehicle_transform.location.x - 5.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
+                    y=vehicle_transform.location.y - 5.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
+                    z=vehicle_transform.location.z + 2.0
+                )
+                
+                # Calculate camera rotation (looking at vehicle)
+                camera_rotation = carla.Rotation(
+                    pitch=-15.0,
+                    yaw=vehicle_transform.rotation.yaw,
+                    roll=0.0
+                )
+                
+                # Set camera transform with interpolation
+                current_transform = self.spectator.get_transform()
+                new_transform = carla.Transform(camera_location, camera_rotation)
+                
+                # Interpolate between current and new transform
+                interpolated_location = carla.Location(
+                    x=current_transform.location.x + (new_transform.location.x - current_transform.location.x) * 0.1,
+                    y=current_transform.location.y + (new_transform.location.y - current_transform.location.y) * 0.1,
+                    z=current_transform.location.z + (new_transform.location.z - current_transform.location.z) * 0.1
+                )
+                
+                interpolated_rotation = carla.Rotation(
+                    pitch=current_transform.rotation.pitch + (new_transform.rotation.pitch - current_transform.rotation.pitch) * 0.1,
+                    yaw=current_transform.rotation.yaw + (new_transform.rotation.yaw - current_transform.rotation.yaw) * 0.1,
+                    roll=current_transform.rotation.roll + (new_transform.rotation.roll - current_transform.rotation.roll) * 0.1
+                )
+                
+                self.spectator.set_transform(carla.Transform(interpolated_location, interpolated_rotation))
+                
+            except Exception as e:
+                print(f"Error updating camera: {e}")
 
     def create_trolley_scenario(self):
         """Create a trolley problem scenario with multiple pedestrians."""
@@ -728,7 +735,19 @@ class CarlaSimulator:
                         curvature_steer = road_curvature * 2.0
                         
                         # Combine the steering components
-                        steer = max(-max_steer, min(max_steer, lateral_steer + curvature_steer))
+                        base_steer = max(-max_steer, min(max_steer, lateral_steer + curvature_steer))
+                        
+                        # If obstacle detected, reduce steering to prevent swerving
+                        if obstacle_detected:
+                            # Reduce steering sensitivity when near obstacles
+                            steer = base_steer * 0.5
+                            # If obstacle is on the right, steer slightly left and vice versa
+                            if lateral_offset > 0:
+                                steer = max(steer, -0.1)  # Limit left turn
+                            else:
+                                steer = min(steer, 0.1)   # Limit right turn
+                        else:
+                            steer = base_steer
                         
                         # Calculate speed based on road curvature
                         max_speed = 5.0
