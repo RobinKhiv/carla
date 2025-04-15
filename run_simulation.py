@@ -6,7 +6,7 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(project_root)
 
 # Add CARLA Python API to the Python path
-carla_path = os.path.join(project_root, "carla-python-api")
+carla_path = r"C:\carla\PythonAPI\carla"
 if os.path.exists(carla_path):
     sys.path.append(carla_path)
 else:
