@@ -625,12 +625,41 @@ class CarlaSimulator:
                         vehicle_to_center = vehicle_location - road_center
                         lateral_offset = vehicle_to_center.dot(road_right)
                         
-                        # Check for obstacles
+                        # Check for obstacles with more precise detection
                         obstacle_detected = False
+                        min_obstacle_distance = 15.0  # Reduced from 20.0
+                        obstacle_info = []
+                        
                         for actor in self.world.get_actors():
-                            if actor.id != self.vehicle.id and actor.get_location().distance(vehicle_location) < 20.0:
-                                obstacle_detected = True
-                                break
+                            # Skip the ego vehicle and non-vehicle/walker actors
+                            if actor.id == self.vehicle.id:
+                                continue
+                            if not (actor.type_id.startswith('vehicle.') or actor.type_id.startswith('walker.')):
+                                continue
+                            
+                            distance = actor.get_location().distance(vehicle_location)
+                            if distance < min_obstacle_distance:
+                                # Check if the obstacle is in front of the vehicle
+                                obstacle_direction = actor.get_location() - vehicle_location
+                                obstacle_direction = obstacle_direction.make_unit_vector()
+                                forward_dot = vehicle_forward.dot(obstacle_direction)
+                                
+                                # Only consider obstacles in front of the vehicle
+                                if forward_dot > 0.5:  # More than 60 degrees in front
+                                    obstacle_detected = True
+                                    obstacle_info.append({
+                                        'type': actor.type_id,
+                                        'distance': distance,
+                                        'forward_dot': forward_dot
+                                    })
+                        
+                        # Print obstacle information
+                        if obstacle_info:
+                            print("Detected obstacles:")
+                            for info in obstacle_info:
+                                print(f"  - Type: {info['type']}, Distance: {info['distance']:.2f}m, Forward dot: {info['forward_dot']:.2f}")
+                        else:
+                            print("No obstacles detected")
                         
                         # Calculate the road's curvature at the current waypoint
                         road_curvature = 0.0
