@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, Tuple
-from ..utils.sensor_utils import calculate_risk_score, detect_obstacles, SensorUtils
+from ..utils.sensor_utils import SensorUtils
 import numpy as np
 
 class EthicalEngine:
@@ -17,28 +17,38 @@ class EthicalEngine:
         self.current_hazard = None
 
     def evaluate_decision(self, decision: Dict[str, Any], sensor_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Evaluate a decision based on ethical considerations and current scenario.
+        """Evaluate a decision based on ethical considerations."""
+        # Calculate risk scores
+        risk_score = self.sensor_utils.calculate_risk_score(sensor_data)
         
-        Args:
-            decision: The proposed decision from the decision maker
-            sensor_data: Current sensor data including detected objects
-            
-        Returns:
-            Modified decision with ethical constraints applied
-        """
-        # Check for trolley problem scenarios
-        trolley_decision = self._check_trolley_problem(sensor_data)
-        if trolley_decision is not None:
-            return trolley_decision
-
-        # Check for hazards
-        hazard_decision = self._check_hazards(sensor_data)
-        if hazard_decision is not None:
-            return hazard_decision
-
-        # Apply standard ethical constraints
-        return self._apply_ethical_constraints(decision, sensor_data)
+        # Detect obstacles
+        obstacles = []
+        if 'lidar' in sensor_data:
+            obstacles = self.sensor_utils.detect_obstacles(sensor_data['lidar'])
+        
+        # Apply ethical weights to the decision
+        ethical_decision = decision.copy()
+        
+        # Adjust controls based on risk
+        if risk_score > 0.5:
+            # High risk situation
+            ethical_decision['throttle'] *= 0.5
+            ethical_decision['brake'] = max(decision['brake'], 0.5)
+        elif risk_score > 0.3:
+            # Moderate risk
+            ethical_decision['throttle'] *= 0.7
+            ethical_decision['brake'] = max(decision['brake'], 0.3)
+        
+        # Check for pedestrians
+        if obstacles:
+            for obstacle in obstacles:
+                if obstacle['size'] > 1.0:  # Significant obstacle
+                    # Strong braking for large obstacles
+                    ethical_decision['throttle'] = 0.0
+                    ethical_decision['brake'] = 1.0
+                    break
+        
+        return ethical_decision
 
     def _check_trolley_problem(self, sensor_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -219,7 +229,7 @@ class EthicalEngine:
         pedestrians = []
         
         if 'lidar' in sensor_data:
-            obstacles = detect_obstacles(sensor_data['lidar'])
+            obstacles = self.sensor_utils.detect_obstacles(sensor_data['lidar'])
             for obstacle in obstacles:
                 # Simple heuristic: pedestrians are typically smaller than vehicles
                 if obstacle['size'] < 1.5:  # Approximate pedestrian size
@@ -268,7 +278,7 @@ class EthicalEngine:
                 score -= self.pedestrian_priority
         
         # Check for passenger safety
-        risk_score = calculate_risk_score(sensor_data)
+        risk_score = self.sensor_utils.calculate_risk_score(sensor_data)
         if risk_score > self.emergency_braking_threshold:
             score -= self.passenger_priority
         
