@@ -34,84 +34,70 @@ class ObstacleAvoidance:
         """Initialize models with basic rules for speed control."""
         # Create some basic training data
         X = []
-        y_throttle = []
-        y_brake = []
-        y_steer = []
+        y = []
         
         # Case 1: Low speed, straight
         X.append([0.2, 1.0, 0.0, 0.0, 0.0])  # low speed, no obstacles
-        y_throttle.append(0.5)  # accelerate
-        y_brake.append(0.0)     # no brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.5, 0.0, 0.0])  # throttle, brake, steer
         
         # Case 2: Medium speed, straight
         X.append([0.5, 1.0, 0.0, 0.0, 0.0])  # medium speed, no obstacles
-        y_throttle.append(0.3)  # maintain speed
-        y_brake.append(0.0)     # no brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.3, 0.0, 0.0])  # throttle, brake, steer
         
         # Case 3: High speed, straight
         X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, no obstacles
-        y_throttle.append(0.1)  # reduce speed
-        y_brake.append(0.0)     # no brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.1, 0.0, 0.0])  # throttle, brake, steer
         
         # Case 4: Low speed, turn
         X.append([0.2, 1.0, 0.3, 0.0, 0.0])  # low speed, turning
-        y_throttle.append(0.3)  # maintain lower speed
-        y_brake.append(0.0)     # no brake
-        y_steer.append(0.3)     # turn
+        y.append([0.3, 0.0, 0.3])  # throttle, brake, steer
         
         # Case 5: High speed, turn
         X.append([0.8, 1.0, 0.3, 0.0, 0.0])  # high speed, turning
-        y_throttle.append(0.0)  # reduce speed
-        y_brake.append(0.1)     # light brake
-        y_steer.append(0.3)     # turn
+        y.append([0.0, 0.1, 0.3])  # throttle, brake, steer
         
         # Case 6: Vehicle ahead
         X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, vehicle close
-        y_throttle.append(0.0)  # no throttle
-        y_brake.append(0.3)     # medium brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.0, 0.3, 0.0])  # throttle, brake, steer
         
         # Case 7: Traffic light
         X.append([0.5, 0.1, 0.0, 0.0, 0.0])  # medium speed, near traffic light
-        y_throttle.append(0.0)  # no throttle
-        y_brake.append(0.5)     # strong brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.0, 0.5, 0.0])  # throttle, brake, steer
         
         # Case 8: Pedestrian far ahead
         X.append([0.5, 0.4, 0.0, 0.0, 0.0])  # medium speed, pedestrian far
-        y_throttle.append(0.2)  # reduce speed gradually
-        y_brake.append(0.0)     # no brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.2, 0.0, 0.0])  # throttle, brake, steer
         
         # Case 9: Pedestrian close ahead
         X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, pedestrian close
-        y_throttle.append(0.0)  # no throttle
-        y_brake.append(0.2)     # gentle brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.0, 0.2, 0.0])  # throttle, brake, steer
         
         # Case 10: Pedestrian not in path
         X.append([0.5, 0.3, 0.5, 0.0, 0.0])  # medium speed, pedestrian not in path
-        y_throttle.append(0.3)  # maintain speed
-        y_brake.append(0.0)     # no brake
-        y_steer.append(0.0)     # go straight
+        y.append([0.3, 0.0, 0.0])  # throttle, brake, steer
         
-        # Convert to numpy arrays
-        X = np.array(X)
-        y_throttle = np.array(y_throttle)
-        y_brake = np.array(y_brake)
-        y_steer = np.array(y_steer)
+        # Convert to tensors
+        X = torch.FloatTensor(X)
+        y = torch.FloatTensor(y)
         
-        # Train models with initial data
-        self.model.fit(X, y_throttle)
-        self.model.fit(X, y_brake)
-        self.model.fit(X, y_steer)
+        # Train the model
+        num_epochs = 1000
+        for epoch in range(num_epochs):
+            # Forward pass
+            self.optimizer.zero_grad()
+            outputs = self.model(X)
+            loss = self.criterion(outputs, y)
+            
+            # Backward pass and optimize
+            loss.backward()
+            self.optimizer.step()
+            
+            if (epoch + 1) % 100 == 0:
+                print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
         
         # Add to experience buffer
         for i in range(len(X)):
-            self.experience_buffer.append((X[i], (y_throttle[i], y_brake[i], y_steer[i])))
+            self.experience_buffer.append((X[i].numpy(), y[i].numpy()))
     
     def preprocess_input(self, vehicle_location: np.ndarray, vehicle_velocity: float, 
                         vehicle_rotation: np.ndarray, obstacles: List[Tuple[np.ndarray, float, str]], 
