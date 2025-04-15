@@ -83,21 +83,58 @@ class PolicyNetwork(nn.Module):
 
 class RLManager:
     """Manager class for reinforcement learning components with pedestrian safety priority."""
-    def __init__(self, state_size: int = 256, action_size: int = 3):
+    def __init__(self, state_size: int, action_size: int, learning_rate: float = 0.001):
+        """Initialize RL components with enhanced network architecture."""
         self.state_size = state_size
         self.action_size = action_size
+        self.learning_rate = learning_rate
         
-        # Initialize networks
-        self.q_network = QNetwork(state_size)
-        self.target_q_network = QNetwork(state_size)
-        self.policy_network = PolicyNetwork(state_size)
+        # Initialize networks with more layers and batch normalization
+        self.q_network = nn.Sequential(
+            nn.Linear(state_size, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Linear(64, action_size)
+        )
         
-        # Initialize optimizers
-        self.q_optimizer = optim.Adam(self.q_network.parameters())
-        self.policy_optimizer = optim.Adam(self.policy_network.parameters())
+        self.target_network = nn.Sequential(
+            nn.Linear(state_size, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Linear(64, action_size)
+        )
         
-        # Initialize replay buffer
-        self.replay_buffer = ReplayBuffer()
+        # Initialize optimizers with weight decay for regularization
+        self.optimizer = optim.Adam(self.q_network.parameters(), 
+                                  lr=learning_rate,
+                                  weight_decay=1e-4)
+        
+        # Initialize replay buffer with larger capacity
+        self.replay_buffer = deque(maxlen=100000)
+        
+        # Initialize target network
+        self.update_target_network()
+        
+        # Initialize pedestrian safety parameters
+        self.min_pedestrian_distance = 5.0
+        self.max_pedestrian_speed = 2.0
+        self.pedestrian_weight = 0.3
         
         # RL parameters
         self.gamma = 0.99  # Discount factor
@@ -105,11 +142,6 @@ class RLManager:
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.tau = 0.001  # Target network update rate
-        
-        # Pedestrian safety parameters
-        self.pedestrian_weight = 0.8  # High weight for pedestrian safety
-        self.min_pedestrian_distance = 5.0  # Minimum safe distance to pedestrians
-        self.max_pedestrian_speed = 1.5  # Maximum speed when pedestrians are nearby
         
     def select_action(self, state: torch.Tensor, training: bool = True) -> Tuple[int, torch.Tensor]:
         """Select an action using epsilon-greedy policy with pedestrian safety priority."""
@@ -153,9 +185,9 @@ class RLManager:
         pedestrian_scores = torch.tensor([exp['pedestrian_score'] for exp in batch])
         
         # Q-network update
-        self.q_optimizer.zero_grad()
-        current_q_values, current_pedestrian_q = self.q_network(states)
-        next_q_values, next_pedestrian_q = self.target_q_network(next_states)
+        self.optimizer.zero_grad()
+        current_q_values = self.q_network(states)
+        next_q_values = self.target_network(next_states)
         
         # Main Q-learning
         current_q = current_q_values.gather(1, actions.unsqueeze(1))
@@ -165,21 +197,20 @@ class RLManager:
         q_loss = nn.MSELoss()(current_q.squeeze(), target_q)
         
         # Pedestrian safety Q-learning
-        current_pedestrian = current_pedestrian_q.gather(1, actions.unsqueeze(1))
-        next_pedestrian = next_pedestrian_q.max(1)[0].detach()
+        pedestrian_q = current_q_values.gather(1, actions.unsqueeze(1))
+        next_pedestrian = next_q_values.max(1)[0].detach()
         target_pedestrian = pedestrian_scores + (1 - dones) * self.gamma * next_pedestrian
         
-        pedestrian_q_loss = nn.MSELoss()(current_pedestrian.squeeze(), target_pedestrian)
+        pedestrian_q_loss = nn.MSELoss()(pedestrian_q.squeeze(), target_pedestrian)
         
         # Combined loss with high weight for pedestrian safety
         total_q_loss = q_loss + self.pedestrian_weight * pedestrian_q_loss
         total_q_loss.backward()
-        self.q_optimizer.step()
+        self.optimizer.step()
         
         # Policy network update
-        self.policy_optimizer.zero_grad()
         action_probs, pedestrian_probs = self.policy_network(states)
-        q_values, pedestrian_q = self.q_network(states).detach()
+        q_values = current_q_values.detach()
         
         # Main policy loss
         policy_loss = -(action_probs * q_values).sum(1).mean()
@@ -190,10 +221,9 @@ class RLManager:
         # Combined policy loss with high weight for pedestrian safety
         total_policy_loss = policy_loss + self.pedestrian_weight * pedestrian_policy_loss
         total_policy_loss.backward()
-        self.policy_optimizer.step()
         
         # Update target network
-        for target_param, param in zip(self.target_q_network.parameters(), 
+        for target_param, param in zip(self.target_network.parameters(), 
                                      self.q_network.parameters()):
             target_param.data.copy_(self.tau * param.data + 
                                   (1 - self.tau) * target_param.data)
@@ -209,58 +239,53 @@ class RLManager:
             'epsilon': self.epsilon
         }
     
-    def calculate_reward(self, state: Dict[str, Any], action: int, 
-                        next_state: Dict[str, Any]) -> Tuple[float, float]:
-        """Calculate reward based on state transition with pedestrian safety priority."""
-        reward = 0.0
-        pedestrian_score = 0.0
+    def calculate_reward(self, state: Dict[str, Any], action: int, next_state: Dict[str, Any]) -> float:
+        """Calculate reward with enhanced steering stability."""
+        # Base reward components
+        lane_keeping_reward = 0.0
+        steering_stability_reward = 0.0
+        speed_reward = 0.0
+        pedestrian_safety_reward = 0.0
         
-        # Pedestrian safety rewards (highest priority)
-        if 'pedestrian_detected' in state and state['pedestrian_detected']:
-            distance = state['pedestrian_distance']
-            if distance < self.min_pedestrian_distance:
-                # Severe penalty for being too close to pedestrians
-                reward -= 20.0
-                pedestrian_score -= 1.0
-            elif distance < 2 * self.min_pedestrian_distance:
-                # Moderate penalty for being in warning zone
-                reward -= 10.0
-                pedestrian_score -= 0.5
-            else:
-                # Reward for maintaining safe distance
-                reward += 5.0
-                pedestrian_score += 0.5
-                
-            # Speed control near pedestrians
-            if state['speed'] > self.max_pedestrian_speed:
-                reward -= 5.0
-                pedestrian_score -= 0.3
-            else:
-                reward += 2.0
-                pedestrian_score += 0.2
+        # Lane keeping reward
+        lane_offset = state.get('lane_offset', 0.0)
+        lane_keeping_reward = -abs(lane_offset) * 0.5  # Penalize deviation from lane center
         
-        # Safety rewards (secondary priority)
-        if state['risk_score'] > 0.8:
-            reward -= 10.0
-        elif state['risk_score'] < 0.2:
-            reward += 1.0
-            
-        # Progress rewards (lowest priority)
-        if next_state['distance_traveled'] > state['distance_traveled']:
-            reward += 0.1
-            
-        # Comfort rewards (lowest priority)
-        if abs(action) < 0.3:  # Smooth actions
-            reward += 0.05
-            
-        return reward, min(max(pedestrian_score, 0.0), 1.0)
+        # Steering stability reward
+        current_steer = state.get('steer', 0.0)
+        next_steer = next_state.get('steer', 0.0)
+        steering_change = abs(next_steer - current_steer)
+        steering_stability_reward = -steering_change * 0.3  # Penalize rapid steering changes
+        
+        # Speed reward
+        current_speed = state.get('speed', 0.0)
+        target_speed = state.get('target_speed', 3.0)
+        speed_diff = abs(current_speed - target_speed)
+        speed_reward = -speed_diff * 0.2  # Penalize deviation from target speed
+        
+        # Pedestrian safety reward
+        pedestrian_distance = state.get('pedestrian_distance', float('inf'))
+        if pedestrian_distance < self.min_pedestrian_distance:
+            pedestrian_safety_reward = -10.0  # Strong penalty for being too close to pedestrians
+        elif pedestrian_distance < 15.0:  # Increased safety margin
+            pedestrian_safety_reward = -5.0  # Moderate penalty for being near pedestrians
+        
+        # Combine rewards with weights
+        total_reward = (
+            lane_keeping_reward * 0.4 +  # Increased weight for lane keeping
+            steering_stability_reward * 0.3 +  # Increased weight for steering stability
+            speed_reward * 0.2 +
+            pedestrian_safety_reward * self.pedestrian_weight
+        )
+        
+        return total_reward
     
     def save_models(self, path: str):
         """Save the trained models to disk."""
         torch.save({
             'q_network': self.q_network.state_dict(),
             'policy_network': self.policy_network.state_dict(),
-            'target_q_network': self.target_q_network.state_dict()
+            'target_network': self.target_network.state_dict()
         }, path)
     
     def load_models(self, path: str):
@@ -268,4 +293,11 @@ class RLManager:
         checkpoint = torch.load(path)
         self.q_network.load_state_dict(checkpoint['q_network'])
         self.policy_network.load_state_dict(checkpoint['policy_network'])
-        self.target_q_network.load_state_dict(checkpoint['target_q_network']) 
+        self.target_network.load_state_dict(checkpoint['target_network'])
+        self.update_target_network()
+
+    def update_target_network(self):
+        """Update the target network parameters."""
+        for target_param, param in zip(self.target_network.parameters(), 
+                                     self.q_network.parameters()):
+            target_param.data.copy_(param.data) 
