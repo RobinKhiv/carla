@@ -481,12 +481,65 @@ class CarlaSimulator:
                     # Update camera position
                     self.update_camera()
                     
+                    # Get vehicle state
+                    vehicle_location = np.array([
+                        self.vehicle.get_location().x,
+                        self.vehicle.get_location().y,
+                        self.vehicle.get_location().z
+                    ])
+                    vehicle_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
+                    vehicle_rotation = np.array([
+                        self.vehicle.get_transform().rotation.pitch,
+                        self.vehicle.get_transform().rotation.yaw,
+                        self.vehicle.get_transform().rotation.roll
+                    ])
+                    
+                    # Get current waypoint
+                    current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
+                    if current_waypoint is None:
+                        print("Warning: Vehicle is not on road")
+                        continue
+                    
+                    # Get next waypoint
+                    next_waypoints = current_waypoint.next(5.0)
+                    if not next_waypoints:
+                        print("Warning: No next waypoint found")
+                        continue
+                    
+                    next_waypoint = next_waypoints[0]
+                    next_waypoint_location = np.array([
+                        next_waypoint.transform.location.x,
+                        next_waypoint.transform.location.y,
+                        next_waypoint.transform.location.z
+                    ])
+                    
+                    # Detect obstacles
+                    obstacles = self.detect_obstacles()
+                    
+                    # Get control from obstacle avoidance model
+                    throttle, brake, steer = self.obstacle_avoidance.predict_control(
+                        vehicle_location,
+                        vehicle_velocity,
+                        vehicle_rotation,
+                        obstacles,
+                        next_waypoint_location
+                    )
+                    
+                    # Create control command
+                    control = carla.VehicleControl()
+                    control.throttle = throttle
+                    control.brake = brake
+                    control.steer = steer
+                    
+                    # Apply control to vehicle
+                    self.vehicle.apply_control(control)
+                    
                     # Print vehicle state
-                    if self.vehicle:
-                        current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
-                        vehicle_location = self.vehicle.get_location()
-                        print(f"Vehicle velocity: {current_velocity:.2f} km/h")
-                        print(f"Vehicle position: {vehicle_location}")
+                    print(f"Vehicle velocity: {vehicle_velocity:.2f} km/h")
+                    print(f"Vehicle position: {vehicle_location}")
+                    print(f"Vehicle rotation: {vehicle_rotation}")
+                    print(f"Number of obstacles detected: {len(obstacles)}")
+                    print(f"Steering angle: {steer:.2f}")
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
