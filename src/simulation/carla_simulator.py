@@ -655,16 +655,16 @@ class CarlaSimulator:
                         turn_direction = -1.0 if cross_product.z < 0 else 1.0
                         
                         # Calculate steering based on angle and turn direction
-                        max_steer = 0.2  # Increased from 0.15 to 0.2 for better recovery
-                        angle_factor = min(1.0, angle / 45.0)  # Keep angle threshold at 45°
+                        max_steer = 0.15  # Reduced from 0.2 to 0.15 for smoother steering
+                        angle_factor = min(1.0, angle / 30.0)  # Reduced angle threshold from 45° to 30° for earlier intervention
                         base_steer = turn_direction * angle_factor * max_steer
                         
                         # Add road curvature influence with reduced weight
-                        base_steer += road_curvature * 0.05  # Keep at 0.05
+                        base_steer += road_curvature * 0.03  # Reduced from 0.05 to 0.03
                         
                         # Apply stronger smoothing to steering
                         if hasattr(self, 'last_steer'):
-                            base_steer = self.last_steer * 0.95 + base_steer * 0.05  # Reduced smoothing from 0.99/0.01 to 0.95/0.05 for more responsive steering
+                            base_steer = self.last_steer * 0.98 + base_steer * 0.02  # Increased smoothing from 0.95/0.05 to 0.98/0.02
                         self.last_steer = base_steer
                         
                         # Add lane keeping behavior with reduced strength
@@ -677,13 +677,13 @@ class CarlaSimulator:
                                 # Calculate offset from lane center
                                 lane_center_offset = (self.vehicle.get_location().x - lane_center.x) / 3.0  # Normalize by lane width
                                 # Add small correction to steering
-                                base_steer += lane_center_offset * 0.02  # Keep at 0.02
+                                base_steer += lane_center_offset * 0.01  # Reduced from 0.02 to 0.01
                         except Exception as e:
                             print(f"Error calculating lane center: {e}")
                         
                         # Check for obstacles in front
                         obstacle_detected = False
-                        obstacle_distance = 50.0  # Keep at 50.0
+                        obstacle_distance = 30.0  # Reduced from 50.0 to 30.0 meters
                         obstacle_steering = 0.0
                         
                         # Get vehicle's forward vector
@@ -699,12 +699,12 @@ class CarlaSimulator:
                                 angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
                                 
                                 # Only consider vehicles in front within a narrower angle
-                                if distance < obstacle_distance and angle < 30.0:  # Keep at 30.0
+                                if distance < obstacle_distance and angle < 20.0:  # Reduced from 30.0 to 20.0 degrees
                                     obstacle_detected = True
                                     obstacle_distance = distance
                                     # Calculate avoidance steering with reduced intensity
                                     relative_position = other_location - self.vehicle.get_location()
-                                    obstacle_steering = -0.03 * (relative_position.x / distance)  # Keep at -0.03
+                                    obstacle_steering = -0.02 * (relative_position.x / distance)  # Reduced from -0.03 to -0.02
                         
                         # Check for pedestrians with reduced detection range
                         for pedestrian in self.world.get_actors().filter('walker.*'):
@@ -713,44 +713,44 @@ class CarlaSimulator:
                             direction = ped_location - self.vehicle.get_location()
                             angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
                             
-                            if distance < obstacle_distance and angle < 30.0:  # Keep at 30.0
+                            if distance < obstacle_distance and angle < 20.0:  # Reduced from 30.0 to 20.0 degrees
                                 obstacle_detected = True
                                 obstacle_distance = distance
                                 # Calculate avoidance steering with reduced intensity
                                 relative_position = ped_location - self.vehicle.get_location()
-                                obstacle_steering = -0.03 * (relative_position.x / distance)  # Keep at -0.03
+                                obstacle_steering = -0.02 * (relative_position.x / distance)  # Reduced from -0.03 to -0.02
                         
                         # Apply obstacle avoidance steering with stronger smoothing
                         if obstacle_detected:
                             if hasattr(self, 'last_obstacle_steer'):
-                                obstacle_steering = self.last_obstacle_steer * 0.95 + obstacle_steering * 0.05  # Keep at 0.95/0.05
+                                obstacle_steering = self.last_obstacle_steer * 0.98 + obstacle_steering * 0.02  # Increased smoothing from 0.95/0.05 to 0.98/0.02
                             self.last_obstacle_steer = obstacle_steering
                             base_steer += obstacle_steering
                         
                         # Calculate speed based on road curvature and obstacles
-                        max_speed = 5.0
+                        max_speed = 4.0  # Reduced from 5.0 to 4.0 m/s
                         speed_factor = 1.0 - abs(road_curvature)  # Reduce speed based on curvature
                         
                         # If there's an obstacle, reduce speed more gradually
                         if obstacle_detected:
-                            speed_factor *= 0.9  # Keep at 0.9
+                            speed_factor *= 0.95  # Increased from 0.9 to 0.95 for smoother speed reduction
                         
                         # Further reduce speed based on angle to next waypoint
-                        if angle > 30.0:  # If turning more than 30 degrees
-                            speed_factor *= 0.8  # Keep at 0.8
+                        if angle > 20.0:  # Reduced from 30.0 to 20.0 degrees
+                            speed_factor *= 0.9  # Increased from 0.8 to 0.9 for smoother speed reduction
                         
                         # Add improved recovery behavior for high angle deviations
-                        if angle > 45.0:  # If angle is very high
+                        if angle > 30.0:  # Reduced from 45.0 to 30.0 degrees
                             # Reduce speed significantly
-                            speed_factor *= 0.3  # Reduced from 0.5 to 0.3 for more aggressive slowing
+                            speed_factor *= 0.5  # Increased from 0.3 to 0.5 for less aggressive slowing
                             # Apply stronger steering correction with dynamic adjustment
-                            recovery_steer = turn_direction * 0.3  # Increased from 0.2 to 0.3
+                            recovery_steer = turn_direction * 0.2  # Reduced from 0.3 to 0.2
                             # Add a small random component to break out of oscillation
-                            recovery_steer += random.uniform(-0.05, 0.05)
+                            recovery_steer += random.uniform(-0.02, 0.02)  # Reduced from -0.05/0.05 to -0.02/0.02
                             base_steer = recovery_steer
-                            print("High angle detected - applying aggressive recovery behavior")
+                            print("High angle detected - applying recovery behavior")
                         
-                        target_speed = max_speed * max(0.2, speed_factor)
+                        target_speed = max_speed * max(0.3, speed_factor)  # Increased minimum speed factor from 0.2 to 0.3
                         
                         # Get current velocity
                         current_velocity = self.vehicle.get_velocity().length()
