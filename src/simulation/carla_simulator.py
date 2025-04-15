@@ -43,6 +43,10 @@ class CarlaSimulator:
             if self.world is None:
                 raise RuntimeError("Failed to get CARLA world")
             
+            # Change to Town01 (simple map with straight roads)
+            self.client.load_world('Town01')
+            self.world = self.client.get_world()
+            
             # Set synchronous mode
             settings = self.world.get_settings()
             settings.synchronous_mode = True
@@ -69,7 +73,7 @@ class CarlaSimulator:
             self.traffic_manager.set_global_distance_to_leading_vehicle(2.0)
             self.traffic_manager.set_synchronous_mode(True)
             
-            print("Simulator initialized successfully")
+            print("Simulator initialized successfully with Town01 map")
             return True
         except Exception as e:
             print(f"Error initializing simulator: {e}")
@@ -534,10 +538,21 @@ class CarlaSimulator:
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
             
-            # Create scenarios after vehicle is spawned
-            print("Creating scenarios...")
-            self.create_trolley_scenario()
-            self.create_hazard_scenario()
+            # Create straight line path for testing
+            print("Creating straight line path...")
+            start_location = self.vehicle.get_location()
+            path_length = 1000.0  # 1 kilometer straight path
+            waypoints = []
+            
+            # Create waypoints along a straight line
+            for i in range(100):
+                waypoint_location = carla.Location(
+                    x=start_location.x + (i * 10.0),  # 10 meters between waypoints
+                    y=start_location.y,
+                    z=start_location.z
+                )
+                waypoint_transform = carla.Transform(waypoint_location)
+                waypoints.append(waypoint_transform)
             
             # Initialize sensor manager if not already done
             if not self.sensor_manager:
@@ -588,6 +603,8 @@ class CarlaSimulator:
             
             # Main simulation loop
             self.running = True
+            current_waypoint_index = 0
+            
             while self.running:
                 try:
                     # Tick the world
@@ -636,20 +653,22 @@ class CarlaSimulator:
                         if not self.vehicle:
                             raise RuntimeError("Vehicle not initialized")
                         
-                        # Get current waypoint
-                        current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
-                        if current_waypoint is None:
-                            print("Warning: Vehicle is not on road")
-                            continue
+                        # Get current waypoint from our straight line path
+                        if current_waypoint_index < len(waypoints):
+                            next_waypoint = waypoints[current_waypoint_index]
+                            
+                            # Calculate distance to next waypoint
+                            distance = self.vehicle.get_location().distance(next_waypoint.location)
+                            if distance < 5.0:  # If within 5 meters of waypoint, move to next
+                                current_waypoint_index += 1
+                                if current_waypoint_index >= len(waypoints):
+                                    print("Reached end of path")
+                                    self.running = False
+                                    break
+                                next_waypoint = waypoints[current_waypoint_index]
                         
-                        # Get next waypoint with adjusted lookahead distance
-                        lookahead_distance = 10.0  # Reduced from 15.0 for more immediate response
-                        next_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location(), project_to_road=True, lane_type=carla.LaneType.Driving)
-                        for _ in range(3):  # Look ahead 3 waypoints instead of 5
-                            next_waypoint = next_waypoint.next(lookahead_distance)[0]
-                        
-                        # Calculate angle to waypoint with improved accuracy
-                        waypoint_location = next_waypoint.transform.location
+                        # Calculate angle to waypoint
+                        waypoint_location = next_waypoint.location
                         waypoint_vector = np.array([waypoint_location.x - self.vehicle.get_location().x,
                                                   waypoint_location.y - self.vehicle.get_location().y])
                         vehicle_vector = np.array([np.cos(np.radians(self.vehicle.get_transform().rotation.yaw)),
@@ -660,7 +679,7 @@ class CarlaSimulator:
                         vehicle_vector = vehicle_vector / np.linalg.norm(vehicle_vector)
                         angle = np.degrees(np.arccos(np.clip(np.dot(vehicle_vector, waypoint_vector), -1.0, 1.0)))
                         
-                        # Determine turn direction with improved accuracy
+                        # Determine turn direction
                         cross_product = np.cross(vehicle_vector, waypoint_vector)
                         turn_direction = -1.0 if cross_product < 0 else 1.0
                         
@@ -668,19 +687,18 @@ class CarlaSimulator:
                         steer, current_velocity = self._calculate_steering(self.vehicle.get_transform(), next_waypoint, self.vehicle.get_velocity().length() * 3.6)
                         
                         # Calculate throttle and brake with improved stability
-                        throttle, brake = self._calculate_throttle_brake(current_velocity, 10.0, self.vehicle.get_transform(), next_waypoint)
+                        throttle, brake = self._calculate_throttle_brake(current_velocity, 5.0, self.vehicle.get_transform(), next_waypoint)
                         
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
                             throttle=float(throttle),
                             brake=float(brake),
-                            steer=float(steer)  # Use calculated steering
+                            steer=float(steer)
                         )
                         
                         # Print control values for debugging
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
                         print(f"Vehicle angle to waypoint: {angle} degrees")
-                        print(f"Obstacle detected: {False}")
                         print(f"Current velocity: {current_velocity:.2f} km/h")
                         
                         # Apply control to vehicle
@@ -696,8 +714,7 @@ class CarlaSimulator:
                         print(f"Vehicle rotation: {transform.rotation}")
                         
                         # Print waypoint information
-                        print(f"Current waypoint: {current_waypoint.transform.location}")
-                        print(f"Next waypoint: {next_waypoint.transform.location}")
+                        print(f"Current waypoint: {next_waypoint.location}")
                         
                     except Exception as e:
                         print(f"Error applying controls: {e}")
