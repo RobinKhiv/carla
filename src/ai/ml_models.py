@@ -188,6 +188,12 @@ class MLManager:
                 # Blend RL action with base controls
                 controls = self._blend_controls(controls, rl_action)
             
+            # Convert tensors to Python scalars
+            controls = controls.squeeze().cpu().numpy()
+            risk_score = risk_score.squeeze().item()
+            priorities = priorities.squeeze().cpu().numpy()
+            trolley_decision = trolley_decision.squeeze().cpu().numpy()
+            
             # Convert to control dictionary
             decision = {
                 'controls': {
