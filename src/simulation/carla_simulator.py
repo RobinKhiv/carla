@@ -669,6 +669,48 @@ class CarlaSimulator:
                         except Exception as e:
                             print(f"Error calculating lane center: {e}")
                         
+                        # Check for obstacles with improved detection
+                        obstacle_detected = False
+                        obstacle_distance = 15.0  # Reduced from 20.0 meters for earlier detection
+                        obstacle_steering = 0.0
+                        
+                        # Get vehicle's forward vector
+                        forward_vector = self.vehicle.get_transform().get_forward_vector()
+                        
+                        # Check for vehicles with improved detection
+                        for vehicle in self.world.get_actors().filter('vehicle.*'):
+                            if vehicle.id != self.vehicle.id:
+                                other_location = vehicle.get_location()
+                                distance = self.vehicle.get_location().distance(other_location)
+                                direction = other_location - self.vehicle.get_location()
+                                angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
+                                
+                                if distance < obstacle_distance and angle < 8.0:  # Reduced from 10.0 degrees
+                                    obstacle_detected = True
+                                    obstacle_distance = distance
+                                    relative_position = other_location - self.vehicle.get_location()
+                                    obstacle_steering = -0.008 * (relative_position.x / distance)  # Reduced from -0.01
+                        
+                        # Check for pedestrians with improved detection
+                        for pedestrian in self.world.get_actors().filter('walker.*'):
+                            ped_location = pedestrian.get_location()
+                            distance = self.vehicle.get_location().distance(ped_location)
+                            direction = ped_location - self.vehicle.get_location()
+                            angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
+                            
+                            if distance < obstacle_distance and angle < 8.0:  # Reduced from 10.0 degrees
+                                obstacle_detected = True
+                                obstacle_distance = distance
+                                relative_position = ped_location - self.vehicle.get_location()
+                                obstacle_steering = -0.008 * (relative_position.x / distance)  # Reduced from -0.01
+                        
+                        # Apply obstacle avoidance steering with improved smoothing
+                        if obstacle_detected:
+                            if hasattr(self, 'last_obstacle_steer'):
+                                obstacle_steering = self.last_obstacle_steer * 0.99 + obstacle_steering * 0.01  # Increased smoothing
+                            self.last_obstacle_steer = obstacle_steering
+                            base_steer += obstacle_steering
+                        
                         # Improved recovery behavior for high angle deviations
                         if angle > 45.0:  # Reduced from 60.0 degrees
                             # Reduce speed more gradually
