@@ -254,44 +254,12 @@ class CarlaSimulator:
                             # Set vehicle to manual control
                             self.vehicle.set_autopilot(False)
                             
-                            # Check traffic rules before allowing movement
-                            print("Checking traffic rules...")
+                            # Register vehicle with traffic manager
+                            self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)
+                            self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)
+                            self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)
                             
-                            # Check for traffic lights
-                            traffic_light_state = self.check_traffic_light()
-                            if traffic_light_state == 'red' or traffic_light_state == 'yellow':
-                                print(f"Traffic light is {traffic_light_state}, waiting...")
-                                # Wait for green light
-                                while traffic_light_state != 'green':
-                                    self.world.tick()
-                                    traffic_light_state = self.check_traffic_light()
-                                    time.sleep(0.1)
-                                print("Traffic light is green, proceeding...")
-                            
-                            # Check for stop signs
-                            stop_signs = self.world.get_actors().filter('traffic.stop')
-                            for stop_sign in stop_signs:
-                                if stop_sign.get_location().distance(spawn_point.location) < 10.0:
-                                    print("Stop sign detected, waiting...")
-                                    time.sleep(2.0)  # Wait at stop sign
-                                    print("Proceeding after stop...")
-                            
-                            # Check for pedestrians
-                            pedestrians = self.world.get_actors().filter('walker.pedestrian.*')
-                            for pedestrian in pedestrians:
-                                if pedestrian.get_location().distance(spawn_point.location) < 15.0:
-                                    print("Pedestrian detected, waiting...")
-                                    time.sleep(2.0)  # Wait for pedestrian
-                                    print("Proceeding after pedestrian...")
-                            
-                            # Set initial control values after traffic checks
-                            control = carla.VehicleControl()
-                            control.throttle = 0.0  # Start with no throttle
-                            control.steer = 0.0
-                            control.brake = 0.0
-                            self.vehicle.apply_control(control)
-                            
-                            print("Traffic rules checked, vehicle ready to proceed")
+                            print("Vehicle registered with traffic manager")
                             return True
                 except Exception as e:
                     print(f"Failed to spawn at point {spawn_point.location}: {e}")
@@ -715,7 +683,7 @@ class CarlaSimulator:
             self.cleanup()
 
     def check_traffic_light(self):
-        """Check the state of the traffic light ahead using CARLA's built-in system."""
+        """Check the state of the traffic light ahead using CARLA's traffic manager."""
         if not self.vehicle:
             return 'unknown'
         
@@ -726,38 +694,12 @@ class CarlaSimulator:
         if not vehicle_waypoint:
             return 'unknown'
         
-        # Get all traffic lights in the world
-        traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
+        # Get the next traffic light using traffic manager
+        traffic_light = self.traffic_manager.get_next_traffic_light(self.vehicle)
         
-        # Find the nearest traffic light in front of the vehicle
-        nearest_light = None
-        min_distance = float('inf')
-        
-        for light in traffic_lights:
-            # Get traffic light location
-            light_location = light.get_location()
-            
-            # Get the waypoint at the traffic light
-            light_waypoint = self.world.get_map().get_waypoint(light_location)
-            
-            # Check if the traffic light is in the same lane as the vehicle
-            if light_waypoint and light_waypoint.lane_id == vehicle_waypoint.lane_id:
-                # Calculate distance to traffic light
-                distance = vehicle_location.distance(light_location)
-                
-                # Check if traffic light is in front of the vehicle
-                vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                light_direction = light_location - vehicle_location
-                light_direction = light_direction.make_unit_vector()
-                
-                if vehicle_forward.dot(light_direction) > 0.5 and distance < 50.0:
-                    if distance < min_distance:
-                        min_distance = distance
-                        nearest_light = light
-        
-        if nearest_light and min_distance < 30.0:
+        if traffic_light:
             # Get the state of the traffic light
-            state = nearest_light.get_state()
+            state = traffic_light.get_state()
             if state == carla.TrafficLightState.Green:
                 return 'green'
             elif state == carla.TrafficLightState.Yellow:
