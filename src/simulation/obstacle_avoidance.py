@@ -16,44 +16,38 @@ class ObstacleAvoidance:
         
         # Initialize models with basic rules
         self._initialize_models()
-        
+    
     def _initialize_models(self):
-        """Initialize models with basic rules for obstacle avoidance."""
+        """Initialize models with basic rules for speed control."""
         # Create some basic training data
         X = []
         y_throttle = []
         y_brake = []
         y_steer = []
         
-        # Case 1: No obstacles, high speed
-        X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, far obstacle
-        y_throttle.append(0.7)  # maintain speed
+        # Case 1: Low speed
+        X.append([0.2, 1.0, 0.0, 0.0, 0.0])  # low speed, no obstacles
+        y_throttle.append(0.5)  # accelerate
         y_brake.append(0.0)     # no brake
         y_steer.append(0.0)     # go straight
         
-        # Case 2: Obstacle far ahead
-        X.append([0.8, 0.5, 0.0, 1.0, 0.0])  # high speed, medium distance
-        y_throttle.append(0.5)  # reduce speed
+        # Case 2: Medium speed
+        X.append([0.5, 1.0, 0.0, 0.0, 0.0])  # medium speed, no obstacles
+        y_throttle.append(0.3)  # maintain speed
         y_brake.append(0.0)     # no brake
         y_steer.append(0.0)     # go straight
         
-        # Case 3: Obstacle close ahead
-        X.append([0.8, 0.2, 0.0, 1.0, 0.0])  # high speed, close distance
+        # Case 3: High speed
+        X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, no obstacles
+        y_throttle.append(0.1)  # reduce speed
+        y_brake.append(0.0)     # no brake
+        y_steer.append(0.0)     # go straight
+        
+        # Case 4: Very high speed
+        X.append([1.0, 1.0, 0.0, 0.0, 0.0])  # very high speed, no obstacles
         y_throttle.append(0.0)  # no throttle
-        y_brake.append(0.5)     # medium brake
+        y_brake.append(0.2)     # light brake
         y_steer.append(0.0)     # go straight
-        
-        # Case 4: Obstacle to the left
-        X.append([0.8, 0.3, -1.0, 0.0, 0.0])  # high speed, obstacle left
-        y_throttle.append(0.3)  # reduce speed
-        y_brake.append(0.0)     # no brake
-        y_steer.append(0.3)     # steer right
-        
-        # Case 5: Obstacle to the right
-        X.append([0.8, 0.3, 1.0, 0.0, 0.0])  # high speed, obstacle right
-        y_throttle.append(0.3)  # reduce speed
-        y_brake.append(0.0)     # no brake
-        y_steer.append(-0.3)    # steer left
         
         # Convert to numpy arrays
         X = np.array(X)
@@ -69,7 +63,7 @@ class ObstacleAvoidance:
         # Add to experience buffer
         for i in range(len(X)):
             self.experience_buffer.append((X[i], (y_throttle[i], y_brake[i], y_steer[i])))
-        
+    
     def preprocess_input(self, 
                         vehicle_location: np.ndarray,
                         vehicle_velocity: float,
@@ -90,37 +84,14 @@ class ObstacleAvoidance:
         # Normalize vehicle velocity (assuming max speed of 50 km/h)
         normalized_velocity = vehicle_velocity / 50.0
         
-        # Get the nearest obstacle in front of the vehicle
-        nearest_obstacle = None
-        min_distance = float('inf')
-        
-        for obstacle in obstacles:
-            location, distance, _ = obstacle
-            if distance < min_distance:
-                min_distance = distance
-                nearest_obstacle = obstacle
-        
-        if nearest_obstacle is None:
-            # If no obstacles, use default values
-            obstacle_location = np.array([0, 0, 0])
-            obstacle_distance = 100.0  # Far away
-        else:
-            obstacle_location, obstacle_distance, _ = nearest_obstacle
-        
-        # Normalize obstacle distance (assuming max detection range of 50 meters)
-        normalized_distance = min(obstacle_distance / 50.0, 1.0)
-        
-        # Calculate relative position of obstacle
-        relative_position = obstacle_location - vehicle_location
-        relative_position = relative_position / np.linalg.norm(relative_position) if np.linalg.norm(relative_position) > 0 else np.zeros(3)
-        
-        # Create input features
+        # For now, ignore obstacles and just focus on speed control
+        # Create input features with just velocity
         features = np.array([
             normalized_velocity,
-            normalized_distance,
-            relative_position[0],  # x
-            relative_position[1],  # y
-            relative_position[2]   # z
+            1.0,  # default distance (no obstacles)
+            0.0,  # default x position
+            0.0,  # default y position
+            0.0   # default z position
         ])
         
         return features
@@ -131,7 +102,7 @@ class ObstacleAvoidance:
                        vehicle_rotation: np.ndarray,
                        obstacles: List[Tuple[np.ndarray, float, str]]) -> Tuple[float, float, float]:
         """
-        Predict control actions based on current state and obstacles.
+        Predict control actions based on current state.
         
         Args:
             vehicle_location: Current vehicle location (x, y, z)
@@ -148,7 +119,7 @@ class ObstacleAvoidance:
         # Make predictions
         throttle = self.throttle_model.predict([features])[0]
         brake = self.brake_model.predict([features])[0]
-        steer = self.steer_model.predict([features])[0]
+        steer = 0.0  # Always go straight for now
         
         # Clip values to valid ranges
         throttle = np.clip(throttle, 0.0, 1.0)
