@@ -725,6 +725,18 @@ class CarlaSimulator:
                                                     'lane_type': 'sidewalk'
                                                 })
                         
+                        # Check traffic light state
+                        traffic_light_state = self.check_traffic_light()
+                        if traffic_light_state == 'red':
+                            # Stop at red light
+                            throttle = 0.0
+                            brake = 0.5
+                            print("Red light detected - stopping")
+                        elif traffic_light_state == 'yellow':
+                            # Slow down for yellow light
+                            speed_factor *= 0.5  # Reduce speed to 50%
+                            print("Yellow light detected - slowing down")
+                        
                         # Calculate speed based on road curvature and obstacles
                         max_speed = 5.0
                         speed_factor = 1.0 - abs(road_curvature)  # Reduce speed based on curvature
