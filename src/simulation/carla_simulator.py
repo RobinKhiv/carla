@@ -626,18 +626,44 @@ class CarlaSimulator:
                             # Get the next few waypoints to estimate curvature
                             next_waypoints = current_waypoint.next(10.0)
                             if len(next_waypoints) > 1:
-                                # Calculate the change in road direction
-                                road_direction = next_waypoints[-1].transform.location - current_waypoint.transform.location
-                                road_direction = road_direction.make_unit_vector()
-                                road_curvature = road_right.dot(road_direction)
-                        except:
-                            pass
+                                # Get the road's forward vector at current waypoint
+                                current_forward = current_waypoint.transform.get_forward_vector()
+                                
+                                # Get the road's forward vector at the next waypoint
+                                next_forward = next_waypoints[-1].transform.get_forward_vector()
+                                
+                                # Calculate the change in direction using the cross product
+                                # This gives us the direction and magnitude of the turn
+                                turn_vector = current_forward.cross(next_forward)
+                                
+                                # The z-component of the cross product tells us if it's a right or left turn
+                                # Positive z means right turn, negative z means left turn
+                                road_curvature = turn_vector.z
+                                
+                                # Normalize the curvature
+                                road_curvature = max(-1.0, min(1.0, road_curvature))
+                        except Exception as e:
+                            print(f"Error calculating road curvature: {e}")
                         
                         # Calculate steering based on lateral offset and road curvature
                         max_steer = 0.8
+                        
+                        # Lateral offset correction (keep vehicle centered)
                         lateral_steer = -lateral_offset / 5.0  # Adjust based on lateral offset
-                        curvature_steer = road_curvature * 2.0  # Adjust based on road curvature
+                        
+                        # Road curvature following (follow the road's natural curve)
+                        # Multiply by a larger factor to make the vehicle follow the road more aggressively
+                        curvature_steer = road_curvature * 3.0
+                        
+                        # Combine the steering components
                         steer = max(-max_steer, min(max_steer, lateral_steer + curvature_steer))
+                        
+                        # Print debug information
+                        print(f"Road curvature: {road_curvature}")
+                        print(f"Lateral offset: {lateral_offset}")
+                        print(f"Lateral steer: {lateral_steer}")
+                        print(f"Curvature steer: {curvature_steer}")
+                        print(f"Final steer: {steer}")
                         
                         # Check for obstacles
                         obstacle_detected = False
