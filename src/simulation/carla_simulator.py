@@ -229,6 +229,10 @@ class CarlaSimulator:
                         self.vehicle = self.world.spawn_actor(vehicle_bp, spawn_point)
                         if self.vehicle is not None:
                             print(f"Vehicle spawned successfully at {spawn_point.location}")
+                            # Set vehicle physics
+                            self.vehicle.set_simulate_physics(True)
+                            # Set vehicle to autopilot mode initially
+                            self.vehicle.set_autopilot(False)  # Disable autopilot to allow manual control
                             return True
                 except Exception as e:
                     print(f"Failed to spawn at point {spawn_point.location}: {e}")
@@ -568,11 +572,20 @@ class CarlaSimulator:
                     
                     # Apply controls
                     try:
+                        if not self.vehicle:
+                            raise RuntimeError("Vehicle not initialized")
+                        
+                        # Create and apply vehicle control
                         control = carla.VehicleControl(
                             throttle=float(decision.get('throttle', 0.0)),
                             brake=float(decision.get('brake', 0.0)),
                             steer=float(decision.get('steer', 0.0))
                         )
+                        
+                        # Print control values for debugging
+                        print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
+                        
+                        # Apply control to vehicle
                         self.vehicle.apply_control(control)
                     except Exception as e:
                         print(f"Error applying controls: {e}")
