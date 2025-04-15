@@ -12,26 +12,41 @@ from ..ml.ml_manager import MLManager
 class CarlaSimulator:
     def __init__(self, host: str = 'localhost', port: int = 2000):
         """Initialize the CARLA simulator with connection parameters."""
-        self.client = carla.Client(host, port)
-        self.client.set_timeout(10.0)
-        self.world = None
-        self.vehicle = None
-        self.sensor_manager = None
-        self.decision_maker = None
-        self.ethical_engine = None
-        self.ml_manager = None
-        self.spectator = None
-        self.running = False
-        self.pedestrians = []
-        self.other_vehicles = []
-        self.walker_controllers = []
-        self.traffic_manager = None
+        try:
+            self.client = carla.Client(host, port)
+            self.client.set_timeout(10.0)
+            self.world = None
+            self.vehicle = None
+            self.sensor_manager = None
+            self.decision_maker = None
+            self.ethical_engine = None
+            self.ml_manager = None
+            self.spectator = None
+            self.running = False
+            self.pedestrians = []
+            self.other_vehicles = []
+            self.walker_controllers = []
+            self.traffic_manager = None
+            
+            # Initialize components
+            self.initialize()
+        except Exception as e:
+            print(f"Error initializing CARLA simulator: {e}")
+            raise
 
     def initialize(self):
         """Initialize the simulation environment and components."""
         try:
             # Get the world
             self.world = self.client.get_world()
+            if self.world is None:
+                raise RuntimeError("Failed to get CARLA world")
+            
+            # Set synchronous mode
+            settings = self.world.get_settings()
+            settings.synchronous_mode = True
+            settings.fixed_delta_seconds = 0.05  # 20 FPS
+            self.world.apply_settings(settings)
             
             # Get the blueprint library
             blueprint_library = self.world.get_blueprint_library()
@@ -318,70 +333,49 @@ class CarlaSimulator:
     def run(self):
         """Run the simulation."""
         try:
-            # Initialize the simulation
             if not self.initialize():
-                print("Failed to initialize simulation")
-                return
-
-            # Spawn the vehicle
+                raise RuntimeError("Failed to initialize simulator")
+            
+            # Spawn ego vehicle
             if not self.spawn_vehicle():
-                print("Failed to spawn vehicle")
-                return
-
-            # Spawn regular traffic
-            self.spawn_pedestrians(10)
-            self.spawn_other_vehicles(10)
-
-            # Create special scenarios
-            self.create_trolley_scenario()
-            self.create_hazard_scenario()
-
+                raise RuntimeError("Failed to spawn ego vehicle")
+            
             # Set up camera
             self.setup_camera()
-            self.running = True
-
+            
             # Main simulation loop
+            self.running = True
             while self.running:
-                # Get sensor data
-                sensor_data = self.sensor_manager.get_sensor_data()
-                
-                # Process sensor data
-                processed_features = self.ml_manager.process_sensor_data(sensor_data)
-                
-                # Make decision
-                decision = self.ml_manager.make_decision(processed_features)
-                
-                # Evaluate ethical considerations
-                ethical_decision = self.ethical_engine.evaluate_decision(decision, sensor_data)
-                
-                # Check traffic light state
-                traffic_light_state = self.check_traffic_light()
-                
-                # Apply decision with traffic light consideration
-                if traffic_light_state == 'green':
-                    # Apply the decision normally
-                    self.apply_decision(ethical_decision)
-                elif traffic_light_state == 'yellow':
-                    # Reduce speed when approaching yellow light
-                    controls = ethical_decision.get('controls', {})
-                    controls['throttle'] *= 0.5
-                    controls['brake'] = max(controls.get('brake', 0.0), 0.3)
-                    self.apply_decision(ethical_decision)
-                else:  # red
-                    # Stop at red light
-                    controls = ethical_decision.get('controls', {})
-                    controls['throttle'] = 0.0
-                    controls['brake'] = 1.0
-                    self.apply_decision(ethical_decision)
-                
-                # Update camera
-                self.update_camera()
-                
-                # Update simulation state
-                self.world.tick()
-                
+                try:
+                    # Tick the world
+                    self.world.tick()
+                    
+                    # Get sensor data
+                    sensor_data = self.sensor_manager.get_sensor_data()
+                    
+                    # Process sensor data
+                    features = self.ml_manager.process_sensor_data(sensor_data)
+                    
+                    # Make decision
+                    decision = self.ml_manager.make_decision(features)
+                    
+                    # Apply controls
+                    self.vehicle.apply_control(carla.VehicleControl(
+                        throttle=decision['throttle'],
+                        brake=decision['brake'],
+                        steer=decision['steer']
+                    ))
+                    
+                    # Update camera
+                    self.update_camera()
+                    
+                except Exception as e:
+                    print(f"Error in simulation loop: {e}")
+                    self.running = False
+                    break
+            
         except Exception as e:
-            print(f"Error in simulation: {e}")
+            print(f"Error running simulation: {e}")
         finally:
             self.cleanup()
 
@@ -435,25 +429,33 @@ class CarlaSimulator:
         self.vehicle.apply_control(control)
 
     def cleanup(self):
-        """Clean up resources and destroy actors."""
-        print("\nCleaning up...")
-        
-        # Stop walker controllers
-        for controller in self.walker_controllers:
-            controller.stop()
-        
-        # Destroy all actors
-        for actor in self.pedestrians + self.other_vehicles:
-            if actor is not None:
-                actor.destroy()
-        
-        if self.sensor_manager:
-            self.sensor_manager.destroy()
-        
-        if self.vehicle:
-            self.vehicle.destroy()
-        
-        print("Cleanup complete")
+        """Clean up all actors and resources."""
+        try:
+            # Destroy all actors
+            for actor in self.world.get_actors():
+                if actor.type_id.startswith('vehicle.') or actor.type_id.startswith('walker.'):
+                    actor.destroy()
+            
+            # Reset world settings
+            settings = self.world.get_settings()
+            settings.synchronous_mode = False
+            self.world.apply_settings(settings)
+            
+            # Clear lists
+            self.pedestrians.clear()
+            self.other_vehicles.clear()
+            self.walker_controllers.clear()
+            
+            # Reset components
+            self.vehicle = None
+            self.sensor_manager = None
+            self.decision_maker = None
+            self.ethical_engine = None
+            self.ml_manager = None
+            self.spectator = None
+            self.running = False
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
 
 if __name__ == "__main__":
     simulator = CarlaSimulator()

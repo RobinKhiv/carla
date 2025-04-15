@@ -5,301 +5,214 @@ import numpy as np
 from typing import Dict, Any, List, Tuple
 from ..utils.sensor_utils import SensorUtils
 from .rl_components import RLManager
+from ..ml.ml_manager import MLManager
 
 class PerceptionModel(nn.Module):
-    """Neural network for processing sensor data and detecting objects."""
-    def __init__(self, input_size: int = 1024, hidden_size: int = 512):
-        super(PerceptionModel, self).__init__()
-        # Input processing layers
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.fc3 = nn.Linear(hidden_size // 2, 256)  # Output: object features
+    """Enhanced perception model with dedicated object detection layers."""
+    def __init__(self):
+        super().__init__()
+        self.conv_layers = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2)
+        )
         
-        # Object detection layers
-        self.detection_fc1 = nn.Linear(256, 128)
-        self.detection_fc2 = nn.Linear(128, 64)
-        self.detection_fc3 = nn.Linear(64, 32)  # Output: object detection features
+        self.detection_layers = nn.Sequential(
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU()
+        )
         
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(0.3)
+        self.classification = nn.Sequential(
+            nn.Linear(512 * 4 * 4, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128)
+        )
         
+        self.regression = nn.Sequential(
+            nn.Linear(512 * 4 * 4, 256),
+            nn.ReLU(),
+            nn.Linear(256, 4)  # x, y, width, height
+        )
+
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Process input features
-        x = self.relu(self.fc1(x))
-        x = self.dropout(x)
-        x = self.relu(self.fc2(x))
-        x = self.dropout(x)
-        base_features = self.fc3(x)
-        
-        # Process object detection
-        detection = self.relu(self.detection_fc1(base_features))
-        detection = self.relu(self.detection_fc2(detection))
-        detection = self.detection_fc3(detection)
-        
-        return base_features, detection
+        features = self.conv_layers(x)
+        detection = self.detection_layers(features)
+        classification = self.classification(detection.view(detection.size(0), -1))
+        regression = self.regression(detection.view(detection.size(0), -1))
+        return classification, regression
 
 class DecisionModel(nn.Module):
-    """Neural network for making driving decisions."""
-    def __init__(self, input_size: int = 256):
-        super(DecisionModel, self).__init__()
-        self.input_size = input_size
-        
-        # Feature extraction layers
-        self.feature_extractor = nn.Sequential(
-            nn.Linear(input_size, 128),
-            nn.ReLU(),
-            nn.Dropout(0.3),
+    """Enhanced decision model with risk assessment layers."""
+    def __init__(self):
+        super().__init__()
+        self.feature_processor = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Dropout(0.3)
+            nn.Linear(64, 32),
+            nn.ReLU()
         )
         
-        # Control output layers
         self.control_layers = nn.Sequential(
-            nn.Linear(64, 32),
-            nn.ReLU(),
             nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Linear(16, 3)  # Changed from 2 to 3 for throttle, brake, and steer
+            nn.Linear(16, 3)  # throttle, brake, steer
         )
         
-        # Risk assessment layers
         self.risk_layers = nn.Sequential(
-            nn.Linear(64, 32),
+            nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Linear(32, 1),  # single risk score
-            nn.Sigmoid()  # ensure output is between 0 and 1
+            nn.Linear(16, 1)  # risk score
         )
-    
-    def forward(self, x):
-        # Ensure input is a tensor and has the correct shape
-        if isinstance(x, tuple):
-            x = x[0]  # Take the first element if input is a tuple
-        if not isinstance(x, torch.Tensor):
-            x = torch.tensor(x, dtype=torch.float32)
-        if len(x.shape) == 1:
-            x = x.unsqueeze(0)  # Add batch dimension if missing
-        
-        # Verify input size
-        if x.shape[1] != self.input_size:
-            raise ValueError(f"Expected input size {self.input_size}, got {x.shape[1]}")
-        
-        # Process through feature extractor
-        features = self.feature_extractor(x)
-        
-        # Get control outputs
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        features = self.feature_processor(x)
         controls = self.control_layers(features)
-        
-        # Get risk score
-        risk_score = self.risk_layers(features)
-        
-        return controls, risk_score
+        risk = self.risk_layers(features)
+        return controls, risk
 
 class EthicalModel(nn.Module):
-    """Neural network for ethical decision making."""
-    def __init__(self, input_size: int = 256, hidden_size: int = 128):
-        super(EthicalModel, self).__init__()
-        # Main ethical layers
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.fc3 = nn.Linear(hidden_size // 2, 5)  # Output: ethical priorities
-        
-        # Trolley problem layers
-        self.trolley_fc1 = nn.Linear(input_size, hidden_size)
-        self.trolley_fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.trolley_fc3 = nn.Linear(hidden_size // 2, 3)  # Output: trolley decision
-        
-        self.relu = nn.ReLU()
-        self.softmax = nn.Softmax(dim=1)
-        
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Process main ethical priorities
-        ethics = self.relu(self.fc1(x))
-        ethics = self.relu(self.fc2(ethics))
-        priorities = self.softmax(self.fc3(ethics))
-        
-        # Process trolley problem
-        trolley = self.relu(self.trolley_fc1(x))
-        trolley = self.relu(self.trolley_fc2(trolley))
-        trolley_decision = self.softmax(self.trolley_fc3(trolley))
-        
-        return priorities, trolley_decision
-
-class MLManager:
-    """Manager class for ML models in the autonomous vehicle system."""
+    """Enhanced ethical model with trolley problem handling."""
     def __init__(self):
+        super().__init__()
+        self.feature_processor = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU()
+        )
+        
+        self.ethical_layers = nn.Sequential(
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, 3)  # continue, swerve_left, swerve_right
+        )
+        
+        self.priority_layers = nn.Sequential(
+            nn.Linear(32, 16),
+            nn.ReLU(),
+            nn.Linear(16, 3)  # ethical priorities
+        )
+
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        features = self.feature_processor(x)
+        decisions = self.ethical_layers(features)
+        priorities = self.priority_layers(features)
+        return decisions, priorities
+
+class EnhancedMLManager(MLManager):
+    """Enhanced ML Manager that uses the specialized models."""
+    def __init__(self):
+        super().__init__()
         self.perception_model = PerceptionModel()
         self.decision_model = DecisionModel()
         self.ethical_model = EthicalModel()
-        self.rl_manager = RLManager()
-        self.sensor_utils = SensorUtils()
+        
+        # Move models to appropriate device
+        self.perception_model.to(self.device)
+        self.decision_model.to(self.device)
+        self.ethical_model.to(self.device)
         
         # Initialize optimizers
-        self.perception_optimizer = optim.Adam(self.perception_model.parameters())
-        self.decision_optimizer = optim.Adam(self.decision_model.parameters())
-        self.ethical_optimizer = optim.Adam(self.ethical_model.parameters())
-        
-        # Loss functions
-        self.perception_loss = nn.MSELoss()
-        self.decision_loss = nn.MSELoss()
-        self.ethical_loss = nn.KLDivLoss()
-        self.trolley_loss = nn.CrossEntropyLoss()
-        
-        # Training state
-        self.last_state = None
-        self.last_action = None
-        self.last_reward = None
-        
+        self.perception_optimizer = torch.optim.Adam(self.perception_model.parameters(), lr=0.001)
+        self.decision_optimizer = torch.optim.Adam(self.decision_model.parameters(), lr=0.001)
+        self.ethical_optimizer = torch.optim.Adam(self.ethical_model.parameters(), lr=0.001)
+
     def process_sensor_data(self, sensor_data: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Process raw sensor data through the perception model."""
-        # Convert sensor data to tensor
-        features = self.sensor_utils.extract_features(sensor_data)
-        features_tensor = torch.FloatTensor(features)
+        """Process sensor data through the enhanced perception model."""
+        camera_data = torch.from_numpy(sensor_data['camera']).float().to(self.device)
         
-        # Process through perception model
         with torch.no_grad():
-            base_features, detection_features = self.perception_model(features_tensor)
+            classification, regression = self.perception_model(camera_data)
         
-        return base_features, detection_features
-    
-    def make_decision(self, processed_features: torch.Tensor, 
-                     training: bool = True) -> Dict[str, Any]:
-        """Make driving decisions based on processed features."""
+        return classification, regression
+
+    def make_decision(self, features: torch.Tensor) -> Dict[str, float]:
+        """Make a driving decision with risk assessment."""
         with torch.no_grad():
-            # Ensure features are in the correct format
-            if isinstance(processed_features, tuple):
-                processed_features = processed_features[0]  # Take the first element if input is a tuple
-            if not isinstance(processed_features, torch.Tensor):
-                processed_features = torch.tensor(processed_features, dtype=torch.float32)
-            if len(processed_features.shape) == 1:
-                processed_features = processed_features.unsqueeze(0)  # Add batch dimension if missing
-            
-            # Get base controls and risk score
-            controls, risk_score = self.decision_model(processed_features)
-            
-            # Get ethical considerations
-            priorities, trolley_decision = self.ethical_model(processed_features)
-            
-            # Combine with RL if training
-            if training:
-                rl_action, action_probs = self.rl_manager.select_action(
-                    processed_features, training=True)
-                
-                # Blend RL action with base controls
-                controls = self._blend_controls(controls, rl_action)
-            
-            # Convert tensors to Python scalars
+            controls, risk = self.decision_model(features)
             controls = controls.squeeze().cpu().numpy()
-            risk_score = risk_score.squeeze().item()
+            risk = risk.squeeze().cpu().numpy()
+        
+        return {
+            'throttle': float(controls[0]),
+            'brake': float(controls[1]),
+            'steer': float(controls[2]),
+            'risk_score': float(risk)
+        }
+
+    def evaluate_ethics(self, features: torch.Tensor) -> Dict[str, float]:
+        """Evaluate ethical considerations with priorities."""
+        with torch.no_grad():
+            decisions, priorities = self.ethical_model(features)
+            decisions = torch.softmax(decisions, dim=1)
+            priorities = torch.softmax(priorities, dim=1)
+            decisions = decisions.squeeze().cpu().numpy()
             priorities = priorities.squeeze().cpu().numpy()
-            trolley_decision = trolley_decision.squeeze().cpu().numpy()
-            
-            # Convert to control dictionary
-            decision = {
-                'controls': {
-                    'throttle': float(controls[0]),
-                    'brake': float(controls[1]),
-                    'steer': float(controls[2])
-                },
-                'risk_score': float(risk_score),
-                'ethical_weights': {
-                    'pedestrian_safety': float(priorities[0]),
-                    'passenger_safety': float(priorities[1]),
-                    'other_vehicle_safety': float(priorities[2]),
-                    'property_damage': float(priorities[3]),
-                    'traffic_rules': float(priorities[4])
-                },
-                'trolley_decision': {
-                    'continue_straight': float(trolley_decision[0]),
-                    'swerve_left': float(trolley_decision[1]),
-                    'swerve_right': float(trolley_decision[2])
-                }
+        
+        return {
+            'continue': float(decisions[0]),
+            'swerve_left': float(decisions[1]),
+            'swerve_right': float(decisions[2]),
+            'priorities': {
+                'continue': float(priorities[0]),
+                'swerve_left': float(priorities[1]),
+                'swerve_right': float(priorities[2])
             }
-            
-            return decision
-    
-    def _blend_controls(self, base_controls: torch.Tensor, 
-                       rl_action: int) -> torch.Tensor:
-        """Blend base controls with RL action."""
-        # Define action mappings
-        action_mappings = {
-            0: torch.tensor([0.7, 0.0, 0.0]),  # Accelerate
-            1: torch.tensor([0.0, 0.7, 0.0]),  # Brake
-            2: torch.tensor([0.0, 0.0, 0.5])   # Steer
         }
+
+    def train_step(self, batch: Dict[str, torch.Tensor]) -> Dict[str, float]:
+        """Perform a training step with enhanced loss functions."""
+        features = batch['features'].to(self.device)
+        perception_labels = batch['perception_labels'].to(self.device)
+        decision_labels = batch['decision_labels'].to(self.device)
+        ethical_labels = batch['ethical_labels'].to(self.device)
         
-        # Get RL control
-        rl_control = action_mappings[rl_action]
+        # Forward pass
+        classification, regression = self.perception_model(features)
+        controls, risk = self.decision_model(classification)
+        decisions, priorities = self.ethical_model(classification)
         
-        # Blend with base controls
-        alpha = 0.3  # RL influence factor
-        blended_controls = (1 - alpha) * base_controls + alpha * rl_control
+        # Calculate losses
+        classification_loss = nn.CrossEntropyLoss()(classification, perception_labels['classification'])
+        regression_loss = nn.MSELoss()(regression, perception_labels['regression'])
+        control_loss = nn.MSELoss()(controls, decision_labels['controls'])
+        risk_loss = nn.MSELoss()(risk, decision_labels['risk'])
+        decision_loss = nn.CrossEntropyLoss()(decisions, ethical_labels['decisions'])
+        priority_loss = nn.MSELoss()(priorities, ethical_labels['priorities'])
         
-        return blended_controls
-    
-    def update_rl(self, state: Dict[str, Any], action: int, 
-                 next_state: Dict[str, Any], done: bool):
-        """Update RL components with new experience."""
-        # Calculate reward
-        reward = self.rl_manager.calculate_reward(state, action, next_state)
-        
-        # Store experience
-        experience = {
-            'state': torch.FloatTensor(state['features']),
-            'action': action,
-            'reward': reward,
-            'next_state': torch.FloatTensor(next_state['features']),
-            'done': done
-        }
-        self.rl_manager.replay_buffer.push(experience)
-        
-        # Train RL if enough experiences
-        if len(self.rl_manager.replay_buffer) >= 32:
-            rl_losses = self.rl_manager.train_step()
-            if rl_losses:
-                print(f"RL Training - Q Loss: {rl_losses['q_loss']:.4f}, "
-                      f"Policy Loss: {rl_losses['policy_loss']:.4f}, "
-                      f"Epsilon: {rl_losses['epsilon']:.4f}")
-    
-    def train_step(self, batch_data: Dict[str, Any]):
-        """Perform one training step on the models."""
-        # Extract features and labels
-        features = torch.FloatTensor(batch_data['features'])
-        perception_labels = torch.FloatTensor(batch_data['perception_labels'])
-        decision_labels = torch.FloatTensor(batch_data['decision_labels'])
-        ethical_labels = torch.FloatTensor(batch_data['ethical_labels'])
-        trolley_labels = torch.LongTensor(batch_data['trolley_labels'])
-        
-        # Train perception model
+        # Backward pass
         self.perception_optimizer.zero_grad()
-        base_features, detection_features = self.perception_model(features)
-        perception_loss = self.perception_loss(detection_features, perception_labels)
-        perception_loss.backward()
-        self.perception_optimizer.step()
-        
-        # Train decision model
         self.decision_optimizer.zero_grad()
-        controls, risk_score = self.decision_model(features)
-        decision_loss = self.decision_loss(controls, decision_labels)
-        decision_loss.backward()
-        self.decision_optimizer.step()
-        
-        # Train ethical model
         self.ethical_optimizer.zero_grad()
-        priorities, trolley_decision = self.ethical_model(features)
-        ethical_loss = self.ethical_loss(priorities.log(), ethical_labels)
-        trolley_loss = self.trolley_loss(trolley_decision, trolley_labels)
-        total_ethical_loss = ethical_loss + trolley_loss
-        total_ethical_loss.backward()
+        
+        total_loss = (classification_loss + regression_loss + 
+                     control_loss + risk_loss + 
+                     decision_loss + priority_loss)
+        total_loss.backward()
+        
+        # Update weights
+        self.perception_optimizer.step()
+        self.decision_optimizer.step()
         self.ethical_optimizer.step()
         
         return {
-            'perception_loss': float(perception_loss),
-            'decision_loss': float(decision_loss),
-            'ethical_loss': float(ethical_loss),
-            'trolley_loss': float(trolley_loss)
+            'classification_loss': float(classification_loss.item()),
+            'regression_loss': float(regression_loss.item()),
+            'control_loss': float(control_loss.item()),
+            'risk_loss': float(risk_loss.item()),
+            'decision_loss': float(decision_loss.item()),
+            'priority_loss': float(priority_loss.item()),
+            'total_loss': float(total_loss.item())
         }
-    
+
     def save_models(self, path: str):
         """Save the trained models to disk."""
         torch.save({
@@ -326,38 +239,26 @@ class MLManager:
             self.rl_manager.policy_network.load_state_dict(checkpoint['rl_models']['policy_network'])
             self.rl_manager.target_q_network.load_state_dict(checkpoint['rl_models']['target_q_network'])
 
-    def evaluate_ethics(self, processed_features: torch.Tensor) -> Dict[str, Any]:
-        """Evaluate ethical considerations based on processed features."""
-        with torch.no_grad():
-            # Ensure features are in the correct format
-            if isinstance(processed_features, tuple):
-                processed_features = processed_features[0]
-            if not isinstance(processed_features, torch.Tensor):
-                processed_features = torch.tensor(processed_features, dtype=torch.float32)
-            if len(processed_features.shape) == 1:
-                processed_features = processed_features.unsqueeze(0)
-            
-            # Get ethical considerations
-            priorities, trolley_decision = self.ethical_model(processed_features)
-            
-            # Convert tensors to Python scalars
-            priorities = priorities.squeeze().cpu().numpy()
-            trolley_decision = trolley_decision.squeeze().cpu().numpy()
-            
-            # Convert to ethical evaluation dictionary
-            ethics = {
-                'ethical_weights': {
-                    'pedestrian_safety': float(priorities[0]),
-                    'passenger_safety': float(priorities[1]),
-                    'other_vehicle_safety': float(priorities[2]),
-                    'property_damage': float(priorities[3]),
-                    'traffic_rules': float(priorities[4])
-                },
-                'trolley_decision': {
-                    'continue_straight': float(trolley_decision[0]),
-                    'swerve_left': float(trolley_decision[1]),
-                    'swerve_right': float(trolley_decision[2])
-                }
-            }
-            
-            return ethics 
+    def update_rl(self, state: Dict[str, Any], action: int, 
+                 next_state: Dict[str, Any], done: bool):
+        """Update RL components with new experience."""
+        # Calculate reward
+        reward = self.rl_manager.calculate_reward(state, action, next_state)
+        
+        # Store experience
+        experience = {
+            'state': torch.FloatTensor(state['features']),
+            'action': action,
+            'reward': reward,
+            'next_state': torch.FloatTensor(next_state['features']),
+            'done': done
+        }
+        self.rl_manager.replay_buffer.push(experience)
+        
+        # Train RL if enough experiences
+        if len(self.rl_manager.replay_buffer) >= 32:
+            rl_losses = self.rl_manager.train_step()
+            if rl_losses:
+                print(f"RL Training - Q Loss: {rl_losses['q_loss']:.4f}, "
+                      f"Policy Loss: {rl_losses['policy_loss']:.4f}, "
+                      f"Epsilon: {rl_losses['epsilon']:.4f}") 
