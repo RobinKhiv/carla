@@ -462,7 +462,22 @@ class CarlaSimulator:
             # Clean up any existing actors
             self.cleanup()
             
-            # Spawn ego vehicle
+            # Spawn traffic first
+            print("Spawning traffic...")
+            self.spawn_pedestrians(10)
+            self.spawn_other_vehicles(10)
+            
+            # Create scenarios
+            print("Creating scenarios...")
+            self.create_trolley_scenario()
+            self.create_hazard_scenario()
+            
+            # Wait a moment for traffic to settle
+            for _ in range(10):
+                self.world.tick()
+            
+            # Spawn ego vehicle after traffic
+            print("Spawning ego vehicle...")
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
             
@@ -516,16 +531,6 @@ class CarlaSimulator:
             # Register callback
             camera.listen(camera_callback)
             self.sensor_manager.sensors['camera'] = camera
-            
-            # Spawn traffic
-            print("Spawning traffic...")
-            self.spawn_pedestrians(10)
-            self.spawn_other_vehicles(10)
-            
-            # Create scenarios
-            print("Creating scenarios...")
-            self.create_trolley_scenario()
-            self.create_hazard_scenario()
             
             # Main simulation loop
             self.running = True
