@@ -449,64 +449,45 @@ class CarlaSimulator:
     def run(self):
         """Run the simulation."""
         try:
-            if not self.initialized:
-                if not self.initialize():
-                    raise RuntimeError("Failed to initialize simulator")
-                self.initialized = True
+            # Initialize simulator
+            self.initialize_simulator()
             
-            # Clean up any existing actors
+            # Clean up existing actors
             self.cleanup()
             
             # Spawn ego vehicle
-            print("Spawning ego vehicle...")
-            if not self.spawn_vehicle():
-                raise RuntimeError("Failed to spawn ego vehicle")
+            self.spawn_ego_vehicle()
             
             # Spawn traffic
-            print("Spawning traffic...")
-            self.spawn_traffic(10, 20)  # Spawn 10 vehicles and 20 pedestrians
+            self.spawn_traffic(10, 20)  # 10 vehicles, 20 pedestrians
             
             # Set up camera
-            if not self.setup_camera():
-                print("Warning: Camera setup failed, continuing without camera")
+            self.setup_camera()
+            
+            # Initialize obstacle avoidance model
+            self.obstacle_avoidance = ObstacleAvoidance()
             
             # Main simulation loop
-            self.running = True
-            
-            while self.running:
-                try:
-                    # Tick the world
-                    self.world.tick()
-                    
-                    # Update camera position
-                    self.update_camera()
-                    
-                    # Get vehicle state
-                    vehicle_location = np.array([
-                        self.vehicle.get_location().x,
-                        self.vehicle.get_location().y,
-                        self.vehicle.get_location().z
-                    ])
-                    vehicle_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
-                    vehicle_rotation = np.array([
-                        self.vehicle.get_transform().rotation.pitch,
-                        self.vehicle.get_transform().rotation.yaw,
-                        self.vehicle.get_transform().rotation.roll
-                    ])
-                    
-                    # Get current waypoint
-                    current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
-                    if current_waypoint is None:
-                        print("Warning: Vehicle is not on road")
-                        continue
-                    
-                    # Get next waypoint
-                    next_waypoints = current_waypoint.next(5.0)
-                    if not next_waypoints:
-                        print("Warning: No next waypoint found")
-                        continue
-                    
-                    next_waypoint = next_waypoints[0]
+            while True:
+                # Get vehicle state
+                vehicle_location = np.array([
+                    self.vehicle.get_location().x,
+                    self.vehicle.get_location().y,
+                    self.vehicle.get_location().z
+                ])
+                vehicle_velocity = self.vehicle.get_velocity()
+                speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6  # Convert to km/h
+                vehicle_rotation = np.array([
+                    self.vehicle.get_transform().rotation.pitch,
+                    self.vehicle.get_transform().rotation.yaw,
+                    self.vehicle.get_transform().rotation.roll
+                ])
+                
+                # Get current and next waypoints
+                current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
+                next_waypoint = current_waypoint.next(1.0)[0] if current_waypoint else None
+                
+                if next_waypoint:
                     next_waypoint_location = np.array([
                         next_waypoint.transform.location.x,
                         next_waypoint.transform.location.y,
@@ -514,19 +495,66 @@ class CarlaSimulator:
                     ])
                     
                     # Detect obstacles
-                    obstacles = self.detect_obstacles()
+                    obstacles = []
                     
-                    # Get control from obstacle avoidance model
+                    # Check for vehicles
+                    for vehicle in self.world.get_actors().filter('vehicle.*'):
+                        if vehicle.id != self.vehicle.id:
+                            distance = vehicle.get_location().distance(self.vehicle.get_location())
+                            if distance < 50.0:  # Only consider vehicles within 50 meters
+                                obstacles.append((
+                                    np.array([
+                                        vehicle.get_location().x,
+                                        vehicle.get_location().y,
+                                        vehicle.get_location().z
+                                    ]),
+                                    distance,
+                                    'vehicle'
+                                ))
+                    
+                    # Check for pedestrians
+                    for pedestrian in self.world.get_actors().filter('walker.*'):
+                        distance = pedestrian.get_location().distance(self.vehicle.get_location())
+                        if distance < 20.0:  # Only consider pedestrians within 20 meters
+                            obstacles.append((
+                                np.array([
+                                    pedestrian.get_location().x,
+                                    pedestrian.get_location().y,
+                                    pedestrian.get_location().z
+                                ]),
+                                distance,
+                                'pedestrian'
+                            ))
+                    
+                    # Check for traffic lights
+                    for traffic_light in self.world.get_actors().filter('traffic.traffic_light'):
+                        distance = traffic_light.get_location().distance(self.vehicle.get_location())
+                        if distance < 30.0:  # Only consider traffic lights within 30 meters
+                            obstacles.append((
+                                np.array([
+                                    traffic_light.get_location().x,
+                                    traffic_light.get_location().y,
+                                    traffic_light.get_location().z
+                                ]),
+                                distance,
+                                'traffic_light'
+                            ))
+                    
+                    # Get control values from ML model
                     throttle, brake, steer = self.obstacle_avoidance.predict_control(
-                        vehicle_location,
-                        vehicle_velocity,
-                        vehicle_rotation,
-                        obstacles,
-                        next_waypoint_location
+                        vehicle_location, speed, vehicle_rotation, 
+                        obstacles, next_waypoint_location
                     )
                     
-                    # Create control command
+                    # Apply control with safety checks
                     control = carla.VehicleControl()
+                    
+                    # Safety checks
+                    if speed > 50.0:  # Max speed limit
+                        throttle = 0.0
+                        brake = 0.3
+                    
+                    # Apply controls
                     control.throttle = throttle
                     control.brake = brake
                     control.steer = steer
@@ -534,20 +562,34 @@ class CarlaSimulator:
                     # Apply control to vehicle
                     self.vehicle.apply_control(control)
                     
-                    # Print vehicle state
-                    print(f"Vehicle velocity: {vehicle_velocity:.2f} km/h")
-                    print(f"Vehicle position: {vehicle_location}")
-                    print(f"Vehicle rotation: {vehicle_rotation}")
-                    print(f"Number of obstacles detected: {len(obstacles)}")
-                    print(f"Steering angle: {steer:.2f}")
+                    # Update model with experience
+                    if len(obstacles) > 0:
+                        # Calculate target controls based on safety
+                        target_throttle = 0.0 if speed > 30.0 else 0.3
+                        target_brake = 0.3 if speed > 30.0 else 0.0
+                        target_steer = steer  # Keep current steering
+                        
+                        # Add experience to model
+                        self.obstacle_avoidance.update_model((
+                            self.obstacle_avoidance.preprocess_input(
+                                vehicle_location, speed, vehicle_rotation,
+                                obstacles, next_waypoint_location
+                            ),
+                            (target_throttle, target_brake, target_steer)
+                        ))
                     
-                except Exception as e:
-                    print(f"Error in simulation loop: {e}")
-                    self.running = False
-                    break
-            
-        except Exception as e:
-            print(f"Error running simulation: {e}")
+                    # Print vehicle state
+                    print(f"\rVehicle State - Speed: {speed:.2f} km/h, "
+                          f"Position: ({vehicle_location[0]:.2f}, {vehicle_location[1]:.2f}), "
+                          f"Rotation: {vehicle_rotation[1]:.2f}°, "
+                          f"Obstacles: {len(obstacles)}, "
+                          f"Steering: {steer:.2f}", end="")
+                    
+                # Tick the world
+                self.world.tick()
+                
+        except KeyboardInterrupt:
+            print("\nSimulation stopped by user")
         finally:
             self.cleanup()
 
