@@ -60,25 +60,41 @@ class CarlaSimulator:
             
             # Get spawn points
             spawn_points = []
-            for i in range(num_pedestrians):
+            max_attempts = 100  # Maximum attempts to find valid spawn points
+            
+            for _ in range(max_attempts):
                 spawn_point = carla.Transform()
                 spawn_point.location = self.world.get_random_location_from_navigation()
+                
+                # Check if the spawn point is valid (not colliding)
                 if spawn_point.location is not None:
-                    spawn_points.append(spawn_point)
+                    # Check for collisions at the spawn point
+                    collision = False
+                    for actor in self.world.get_actors():
+                        if actor.get_location().distance(spawn_point.location) < 2.0:
+                            collision = True
+                            break
+                    
+                    if not collision:
+                        spawn_points.append(spawn_point)
+                        if len(spawn_points) >= num_pedestrians:
+                            break
             
             # Spawn pedestrians
             for spawn_point in spawn_points:
                 walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                self.pedestrians.append(walker)
+                if walker is not None:
+                    self.pedestrians.append(walker)
             
             # Spawn walker controllers
             walker_controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
             for walker in self.pedestrians:
                 controller = self.world.spawn_actor(walker_controller_bp, carla.Transform(), walker)
-                self.walker_controllers.append(controller)
-                controller.start()
-                controller.go_to_location(self.world.get_random_location_from_navigation())
-                controller.set_max_speed(1.4)  # Walking speed
+                if controller is not None:
+                    self.walker_controllers.append(controller)
+                    controller.start()
+                    controller.go_to_location(self.world.get_random_location_from_navigation())
+                    controller.set_max_speed(1.4)  # Walking speed
             
             print(f"Spawned {len(self.pedestrians)} pedestrians")
         except Exception as e:
@@ -208,44 +224,54 @@ class CarlaSimulator:
             spawn_point = self.vehicle.get_transform()
             road_location = spawn_point.location
             
-            # Spawn pedestrians in a line across the road
+            # Spawn pedestrians in a line across the road with spacing
             for i in range(5):
-                # Position pedestrians in a line
+                # Position pedestrians in a line with spacing
                 pedestrian_location = carla.Location(
-                    x=road_location.x + i * 2.0,  # 2 meters apart
-                    y=road_location.y + 5.0,      # 5 meters ahead
+                    x=road_location.x + i * 3.0,  # 3 meters apart
+                    y=road_location.y + 10.0,     # 10 meters ahead
                     z=road_location.z
                 )
                 
-                # Create transform for pedestrian
-                pedestrian_transform = carla.Transform(
-                    pedestrian_location,
-                    carla.Rotation(yaw=90.0)  # Facing across the road
-                )
+                # Check for collisions before spawning
+                collision = False
+                for actor in self.world.get_actors():
+                    if actor.get_location().distance(pedestrian_location) < 2.0:
+                        collision = True
+                        break
                 
-                # Spawn pedestrian
-                walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
-                self.pedestrians.append(walker)
-                
-                # Add AI controller
-                controller = self.world.spawn_actor(
-                    self.world.get_blueprint_library().find('controller.ai.walker'),
-                    carla.Transform(),
-                    walker
-                )
-                self.walker_controllers.append(controller)
-                controller.start()
-                
-                # Make pedestrians walk across the road
-                target_location = carla.Location(
-                    x=pedestrian_location.x,
-                    y=pedestrian_location.y + 10.0,  # Walk 10 meters across
-                    z=pedestrian_location.z
-                )
-                controller.go_to_location(target_location)
-                controller.set_max_speed(1.4)  # Walking speed
+                if not collision:
+                    # Create transform for pedestrian
+                    pedestrian_transform = carla.Transform(
+                        pedestrian_location,
+                        carla.Rotation(yaw=90.0)  # Facing across the road
+                    )
+                    
+                    # Spawn pedestrian
+                    walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
+                    if walker is not None:
+                        self.pedestrians.append(walker)
+                        
+                        # Add AI controller
+                        controller = self.world.spawn_actor(
+                            self.world.get_blueprint_library().find('controller.ai.walker'),
+                            carla.Transform(),
+                            walker
+                        )
+                        if controller is not None:
+                            self.walker_controllers.append(controller)
+                            controller.start()
+                            
+                            # Make pedestrians walk across the road
+                            target_location = carla.Location(
+                                x=pedestrian_location.x,
+                                y=pedestrian_location.y + 15.0,  # Walk 15 meters across
+                                z=pedestrian_location.z
+                            )
+                            controller.go_to_location(target_location)
+                            controller.set_max_speed(1.4)  # Walking speed
             
-            print("Created trolley problem scenario with 5 pedestrians crossing the road")
+            print("Created trolley problem scenario with pedestrians crossing the road")
         except Exception as e:
             print(f"Error creating trolley scenario: {e}")
 
@@ -258,32 +284,50 @@ class CarlaSimulator:
             # Create a broken-down vehicle scenario
             spawn_point = self.vehicle.get_transform()
             hazard_location = carla.Location(
-                x=spawn_point.location.x + 30.0,  # 30 meters ahead
+                x=spawn_point.location.x + 50.0,  # 50 meters ahead
                 y=spawn_point.location.y,
                 z=spawn_point.location.z
             )
             
-            # Spawn broken-down vehicle
-            hazard_vehicle = self.world.spawn_actor(
-                random.choice(vehicle_bps),
-                carla.Transform(hazard_location, spawn_point.rotation)
-            )
-            self.other_vehicles.append(hazard_vehicle)
+            # Check for collisions before spawning
+            collision = False
+            for actor in self.world.get_actors():
+                if actor.get_location().distance(hazard_location) < 5.0:
+                    collision = True
+                    break
             
-            # Create debris around the vehicle
-            for i in range(3):
-                debris_location = carla.Location(
-                    x=hazard_location.x + random.uniform(-2.0, 2.0),
-                    y=hazard_location.y + random.uniform(-2.0, 2.0),
-                    z=hazard_location.z
+            if not collision:
+                # Spawn broken-down vehicle
+                hazard_vehicle = self.world.spawn_actor(
+                    random.choice(vehicle_bps),
+                    carla.Transform(hazard_location, spawn_point.rotation)
                 )
-                
-                # Spawn static obstacle
-                obstacle = self.world.spawn_actor(
-                    self.world.get_blueprint_library().find('static.prop.container'),
-                    carla.Transform(debris_location)
-                )
-                self.other_vehicles.append(obstacle)
+                if hazard_vehicle is not None:
+                    self.other_vehicles.append(hazard_vehicle)
+                    
+                    # Create debris around the vehicle with spacing
+                    for i in range(3):
+                        debris_location = carla.Location(
+                            x=hazard_location.x + random.uniform(-3.0, 3.0),
+                            y=hazard_location.y + random.uniform(-3.0, 3.0),
+                            z=hazard_location.z
+                        )
+                        
+                        # Check for debris collisions
+                        debris_collision = False
+                        for actor in self.world.get_actors():
+                            if actor.get_location().distance(debris_location) < 2.0:
+                                debris_collision = True
+                                break
+                        
+                        if not debris_collision:
+                            # Spawn static obstacle
+                            obstacle = self.world.spawn_actor(
+                                self.world.get_blueprint_library().find('static.prop.container'),
+                                carla.Transform(debris_location)
+                            )
+                            if obstacle is not None:
+                                self.other_vehicles.append(obstacle)
             
             print("Created hazard scenario with broken-down vehicle and debris")
         except Exception as e:

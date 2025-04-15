@@ -40,30 +40,54 @@ class PerceptionModel(nn.Module):
 
 class DecisionModel(nn.Module):
     """Neural network for making driving decisions."""
-    def __init__(self, input_size: int = 256, hidden_size: int = 128):
+    def __init__(self, input_size: int = 1024):
         super(DecisionModel, self).__init__()
-        # Main decision layers
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, hidden_size // 2)
-        self.fc3 = nn.Linear(hidden_size // 2, 3)  # Output: throttle, brake, steer
+        self.input_size = input_size
+        
+        # Feature extraction layers
+        self.feature_extractor = nn.Sequential(
+            nn.Linear(input_size, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3)
+        )
+        
+        # Control output layers
+        self.control_layers = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 2)  # throttle and steering
+        )
         
         # Risk assessment layers
-        self.risk_fc1 = nn.Linear(input_size, hidden_size // 2)
-        self.risk_fc2 = nn.Linear(hidden_size // 2, 1)  # Output: risk score
+        self.risk_layers = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),  # single risk score
+            nn.Sigmoid()  # ensure output is between 0 and 1
+        )
+    
+    def forward(self, x):
+        # Ensure input is a tensor and has the correct shape
+        if isinstance(x, tuple):
+            x = x[0]  # Take the first element if input is a tuple
+        if not isinstance(x, torch.Tensor):
+            x = torch.tensor(x, dtype=torch.float32)
+        if len(x.shape) == 1:
+            x = x.unsqueeze(0)  # Add batch dimension if missing
         
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
-        self.sigmoid = nn.Sigmoid()
+        # Process through feature extractor
+        features = self.feature_extractor(x)
         
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Process main decision
-        decision = self.relu(self.fc1(x))
-        decision = self.relu(self.fc2(decision))
-        controls = self.tanh(self.fc3(decision))
+        # Get control outputs
+        controls = self.control_layers(features)
         
-        # Process risk assessment
-        risk = self.relu(self.risk_fc1(x))
-        risk_score = self.sigmoid(self.risk_fc2(risk))
+        # Get risk score
+        risk_score = self.risk_layers(features)
         
         return controls, risk_score
 
@@ -237,14 +261,14 @@ class MLManager:
         
         # Train decision model
         self.decision_optimizer.zero_grad()
-        controls, risk_score = self.decision_model(base_features.detach())
+        controls, risk_score = self.decision_model(features)
         decision_loss = self.decision_loss(controls, decision_labels)
         decision_loss.backward()
         self.decision_optimizer.step()
         
         # Train ethical model
         self.ethical_optimizer.zero_grad()
-        priorities, trolley_decision = self.ethical_model(base_features.detach())
+        priorities, trolley_decision = self.ethical_model(features)
         ethical_loss = self.ethical_loss(priorities.log(), ethical_labels)
         trolley_loss = self.trolley_loss(trolley_decision, trolley_labels)
         total_ethical_loss = ethical_loss + trolley_loss
