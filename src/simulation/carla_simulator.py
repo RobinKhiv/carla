@@ -632,10 +632,24 @@ class CarlaSimulator:
                         vehicle_to_center = vehicle_location - road_center
                         lateral_offset = vehicle_to_center.dot(road_right)
                         
+                        # Calculate steering based on lateral offset and road curvature
+                        max_steer = 0.8
+                        
+                        # Lateral offset correction (keep vehicle centered)
+                        # Reduce the sensitivity of lateral offset correction
+                        lateral_steer = -lateral_offset / 10.0  # Increased denominator from 5.0 to 10.0
+                        
+                        # Road curvature following (follow the road's natural curve)
+                        curvature_steer = road_curvature * 1.5  # Reduced from 2.0 to 1.5
+                        
+                        # Combine the steering components with reduced sensitivity
+                        base_steer = max(-max_steer, min(max_steer, (lateral_steer + curvature_steer) * 0.7))  # Added 0.7 multiplier
+                        
                         # Check for obstacles with more precise detection
                         obstacle_detected = False
-                        min_obstacle_distance = 15.0  # Reduced from 20.0
+                        min_obstacle_distance = 15.0
                         obstacle_info = []
+                        is_pedestrian_on_road = False
                         
                         for actor in self.world.get_actors():
                             # Skip the ego vehicle and non-vehicle/walker actors
@@ -670,6 +684,7 @@ class CarlaSimulator:
                                             # For pedestrians on the road, be more cautious
                                             if forward_dot > 0.3 and distance < 10.0:  # More than 72 degrees in front and within 10m
                                                 obstacle_detected = True
+                                                is_pedestrian_on_road = True
                                                 obstacle_info.append({
                                                     'type': actor.type_id,
                                                     'distance': distance,
@@ -687,99 +702,18 @@ class CarlaSimulator:
                                                     'lane_type': 'sidewalk'
                                                 })
                         
-                        # Print obstacle information
-                        if obstacle_info:
-                            print("Detected obstacles:")
-                            for info in obstacle_info:
-                                lane_type = info.get('lane_type', 'unknown')
-                                print(f"  - Type: {info['type']}, Distance: {info['distance']:.2f}m, Forward dot: {info['forward_dot']:.2f}, Lane: {lane_type}")
-                        else:
-                            print("No obstacles detected")
-                        
-                        # Calculate the road's curvature at the current waypoint
-                        road_curvature = 0.0
-                        try:
-                            # Get the next few waypoints to estimate curvature
-                            next_waypoints = current_waypoint.next(20.0)  # Increased lookahead distance
-                            if len(next_waypoints) > 1:
-                                # Get the road's forward vector at current waypoint
-                                current_forward = current_waypoint.transform.get_forward_vector()
-                                
-                                # Get the road's forward vector at the next waypoint
-                                next_forward = next_waypoints[-1].transform.get_forward_vector()
-                                
-                                # Calculate the change in direction using the cross product
-                                turn_vector = current_forward.cross(next_forward)
-                                
-                                # The z-component of the cross product tells us if it's a right or left turn
-                                road_curvature = turn_vector.z
-                                
-                                # Normalize the curvature and apply a scaling factor
-                                road_curvature = max(-1.0, min(1.0, road_curvature * 2.0))
-                                
-                                # Print detailed curvature information
-                                print(f"Current forward: {current_forward}")
-                                print(f"Next forward: {next_forward}")
-                                print(f"Turn vector: {turn_vector}")
-                                print(f"Raw curvature: {turn_vector.z}")
-                        except Exception as e:
-                            print(f"Error calculating road curvature: {e}")
-                        
-                        # Calculate steering based on lateral offset and road curvature
-                        max_steer = 0.8
-                        
-                        # Lateral offset correction (keep vehicle centered)
-                        lateral_steer = -lateral_offset / 5.0
-                        
-                        # Road curvature following (follow the road's natural curve)
-                        curvature_steer = road_curvature * 2.0
-                        
-                        # Combine the steering components
-                        base_steer = max(-max_steer, min(max_steer, lateral_steer + curvature_steer))
-                        
-                        # If obstacle detected, reduce steering to prevent swerving
-                        if obstacle_detected:
-                            # Check if the obstacle is a pedestrian on the sidewalk
-                            is_sidewalk_pedestrian = False
-                            for info in obstacle_info:
-                                if info.get('lane_type') == 'sidewalk':
-                                    is_sidewalk_pedestrian = True
-                                    break
-                            
-                            if is_sidewalk_pedestrian:
-                                # For sidewalk pedestrians, maintain normal steering but reduce speed
-                                steer = base_steer
-                            else:
-                                # For other obstacles, reduce steering sensitivity
-                                steer = base_steer * 0.5
-                                # If obstacle is on the right, steer slightly left and vice versa
-                                if lateral_offset > 0:
-                                    steer = max(steer, -0.1)  # Limit left turn
-                                else:
-                                    steer = min(steer, 0.1)   # Limit right turn
-                        else:
-                            steer = base_steer
-                        
                         # Calculate speed based on road curvature and obstacles
                         max_speed = 5.0
                         speed_factor = 1.0 - abs(road_curvature)  # Reduce speed based on curvature
                         
-                        # Check if there's a sidewalk pedestrian
-                        is_sidewalk_pedestrian = False
-                        sidewalk_pedestrian_distance = float('inf')
-                        for info in obstacle_info:
-                            if info.get('lane_type') == 'sidewalk':
-                                is_sidewalk_pedestrian = True
-                                sidewalk_pedestrian_distance = min(sidewalk_pedestrian_distance, info['distance'])
-                        
-                        # Adjust speed based on sidewalk pedestrian distance
-                        if is_sidewalk_pedestrian:
-                            if sidewalk_pedestrian_distance < 5.0:
-                                speed_factor *= 0.3  # Slow down significantly when very close
-                            elif sidewalk_pedestrian_distance < 10.0:
-                                speed_factor *= 0.6  # Moderate slowdown when moderately close
-                            else:
-                                speed_factor *= 0.8  # Slight slowdown when far away
+                        # If there's a pedestrian on the road, significantly reduce speed
+                        if is_pedestrian_on_road:
+                            speed_factor *= 0.3  # Reduce speed to 30% when pedestrian is on road
+                            # Maintain lane position, don't swerve
+                            steer = base_steer
+                        else:
+                            # Normal speed control
+                            steer = base_steer
                         
                         target_speed = max_speed * max(0.2, speed_factor)
                         
