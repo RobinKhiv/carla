@@ -667,6 +667,18 @@ class CarlaSimulator:
                             # Get control from traffic manager
                             control = self.vehicle.get_control()
                             
+                            # Get state for RL agent
+                            state = self.rl_agent.get_state(self.vehicle, self.world)
+                            
+                            # Get obstacle avoidance predictions
+                            obstacles = self.detect_obstacles()
+                            obstacle_control = self.obstacle_avoidance.predict(
+                                vehicle_location,
+                                vehicle_velocity,
+                                self.vehicle.get_transform().rotation,
+                                obstacles
+                            )
+                            
                             if pedestrian_in_path and pedestrian_location:
                                 # Get current waypoint
                                 current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
@@ -699,39 +711,41 @@ class CarlaSimulator:
                                             cross_product = vehicle_forward.cross(waypoint_direction)
                                             steering_angle = math.asin(cross_product.z)
                                             
-                                            # Apply control
-                                            control.steer = steering_angle
-                                            control.throttle = 0.8
-                                            control.brake = 0.0
+                                            # Combine controls from all systems
+                                            control.steer = (steering_angle + obstacle_control['steer']) / 2
+                                            control.throttle = (0.8 + obstacle_control['throttle']) / 2
+                                            control.brake = obstacle_control['brake']
                                             
                                             print(f"\nNavigating around pedestrian at {distance_to_pedestrian:.1f}m")
                                         else:
-                                            # If no good waypoint found, use RL-based control
-                                            state = self.rl_agent.get_state(self.vehicle, self.world)
+                                            # If no good waypoint found, use combined RL and obstacle avoidance
                                             action = self.rl_agent.select_action(state)
                                             
                                             throttle_level = action // 3
                                             steer_level = action % 3
                                             
-                                            control.throttle = [0.0, 0.5, 1.0][throttle_level]
-                                            control.steer = [-0.5, 0.0, 0.5][steer_level]
-                                            control.brake = 0.0
+                                            control.throttle = ([0.0, 0.5, 1.0][throttle_level] + obstacle_control['throttle']) / 2
+                                            control.steer = ([-0.5, 0.0, 0.5][steer_level] + obstacle_control['steer']) / 2
+                                            control.brake = obstacle_control['brake']
                                     else:
-                                        # If no waypoints found, use RL-based control
-                                        state = self.rl_agent.get_state(self.vehicle, self.world)
+                                        # If no waypoints found, use combined RL and obstacle avoidance
                                         action = self.rl_agent.select_action(state)
                                         
                                         throttle_level = action // 3
                                         steer_level = action % 3
                                         
-                                        control.throttle = [0.0, 0.5, 1.0][throttle_level]
-                                        control.steer = [-0.5, 0.0, 0.5][steer_level]
-                                        control.brake = 0.0
+                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + obstacle_control['throttle']) / 2
+                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + obstacle_control['steer']) / 2
+                                        control.brake = obstacle_control['brake']
                             else:
-                                # Normal driving conditions
-                                control.throttle = 0.8
-                                control.steer = 0.0
-                                control.brake = 0.0
+                                # Normal driving conditions - combine all systems
+                                action = self.rl_agent.select_action(state)
+                                throttle_level = action // 3
+                                steer_level = action % 3
+                                
+                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + obstacle_control['throttle']) / 2
+                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + obstacle_control['steer']) / 2
+                                control.brake = obstacle_control['brake']
                             
                             # Apply control to vehicle
                             self.vehicle.apply_control(control)
