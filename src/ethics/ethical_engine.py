@@ -3,15 +3,16 @@ from ..utils.sensor_utils import SensorUtils
 import numpy as np
 
 class EthicalEngine:
+    """Engine for evaluating and making ethical decisions in autonomous vehicles."""
     def __init__(self):
         """Initialize the ethical engine with decision-making parameters."""
         self.sensor_utils = SensorUtils()
-        self.ethical_priorities = {
+        self.priorities = {
             'pedestrian_safety': 1.0,
             'passenger_safety': 0.9,
             'other_vehicle_safety': 0.8,
-            'property_damage': 0.5,
-            'traffic_rules': 0.7
+            'property_damage': 0.7,
+            'traffic_rules': 0.6
         }
         self.trolley_scenarios = []
         self.current_hazard = None
@@ -65,37 +66,10 @@ class EthicalEngine:
         
         # Update the controls in the decision
         ethical_decision['controls'] = {
-    def evaluate_decision(self, decision: Dict[str, Any], sensor_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Evaluate a decision based on ethical considerations."""
-        # Calculate risk scores
-        risk_score = self.sensor_utils.calculate_risk_score(sensor_data)
-        
-        # Detect obstacles
-        obstacles = []
-        if 'lidar' in sensor_data:
-            obstacles = self.sensor_utils.detect_obstacles(sensor_data['lidar'])
-        
-        # Apply ethical weights to the decision
-        ethical_decision = decision.copy()
-        
-        # Adjust controls based on risk
-        if risk_score > 0.5:
-            # High risk situation
-            ethical_decision['throttle'] *= 0.5
-            ethical_decision['brake'] = max(decision['brake'], 0.5)
-        elif risk_score > 0.3:
-            # Moderate risk
-            ethical_decision['throttle'] *= 0.7
-            ethical_decision['brake'] = max(decision['brake'], 0.3)
-        
-        # Check for pedestrians
-        if obstacles:
-            for obstacle in obstacles:
-                if obstacle['size'] > 1.0:  # Significant obstacle
-                    # Strong braking for large obstacles
-                    ethical_decision['throttle'] = 0.0
-                    ethical_decision['brake'] = 1.0
-                    break
+            'throttle': float(throttle),
+            'brake': float(brake),
+            'steer': float(steer)
+        }
         
         return ethical_decision
 
@@ -179,7 +153,7 @@ class EthicalEngine:
         for obj in objects:
             # Risk increases with proximity and object type
             proximity_risk = 1.0 - (obj['distance'] / 50.0)  # Normalize distance to 0-1
-            type_risk = self.ethical_priorities.get(f"{obj['type']}_safety", 0.5)
+            type_risk = self.priorities.get(f"{obj['type']}_safety", 0.5)
             total_risk += proximity_risk * type_risk
         
         return min(1.0, total_risk / len(objects))
