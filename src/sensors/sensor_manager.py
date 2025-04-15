@@ -91,4 +91,56 @@ class SensorManager:
             if sensor is not None:
                 sensor.destroy()
         self.sensors.clear()
-        self.sensor_data.clear() 
+        self.sensor_data.clear()
+
+    def setup_sensors(self, vehicle: carla.Actor):
+        """Set up and attach sensors to the vehicle."""
+        try:
+            # Get the blueprint library
+            blueprint_library = self.world.get_blueprint_library()
+            
+            # Camera setup
+            camera_bp = blueprint_library.find('sensor.camera.rgb')
+            camera_bp.set_attribute('image_size_x', '800')
+            camera_bp.set_attribute('image_size_y', '600')
+            camera_bp.set_attribute('fov', '90')
+            
+            # Set up camera transform
+            camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
+            
+            # Spawn and attach camera
+            self.camera = self.world.spawn_actor(
+                camera_bp,
+                camera_transform,
+                attach_to=vehicle
+            )
+            
+            # Add camera to sensor list
+            self.sensors['camera'] = self.camera
+            
+            # Set up callback for camera
+            self.camera.listen(lambda image: self._on_camera_data(image, 'camera'))
+            
+            print("Camera sensor setup complete")
+            
+        except Exception as e:
+            print(f"Error setting up sensors: {e}")
+            raise
+
+    def _on_camera_data(self, image: carla.Image):
+        """Callback for camera data."""
+        try:
+            # Convert to numpy array
+            array = np.frombuffer(image.raw_data, dtype=np.uint8)
+            array = np.reshape(array, (image.height, image.width, 4))
+            array = array[:, :, :3]  # Remove alpha channel
+            
+            # Store the image data
+            self.sensor_data['camera'] = array
+            
+        except Exception as e:
+            print(f"Error processing camera data: {e}")
+
+    def get_sensor_data(self) -> Dict[str, Any]:
+        """Get the latest sensor data."""
+        return self.sensor_data.copy()  # Return a copy to prevent modification 
