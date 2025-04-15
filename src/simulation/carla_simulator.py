@@ -225,8 +225,10 @@ class CarlaSimulator:
                             print(f"Vehicle spawned successfully at {spawn_point.location}")
                             # Set vehicle physics
                             self.vehicle.set_simulate_physics(True)
-                            # Set vehicle to autopilot mode initially
-                            self.vehicle.set_autopilot(False)  # Disable autopilot to allow manual control
+                            # Set vehicle to manual control
+                            self.vehicle.set_autopilot(False)
+                            # Enable vehicle physics
+                            self.vehicle.enable_constant_velocity(carla.Vector3D(0, 0, 0))
                             return True
                 except Exception as e:
                     print(f"Failed to spawn at point {spawn_point.location}: {e}")
@@ -585,6 +587,10 @@ class CarlaSimulator:
                         # Print vehicle state for debugging
                         velocity = self.vehicle.get_velocity()
                         print(f"Vehicle velocity: {velocity.length()} m/s")
+                        
+                        # Print vehicle transform for debugging
+                        transform = self.vehicle.get_transform()
+                        print(f"Vehicle position: {transform.location}")
                         
                     except Exception as e:
                         print(f"Error applying controls: {e}")
