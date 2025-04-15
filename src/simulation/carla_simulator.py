@@ -53,25 +53,12 @@ class CarlaSimulator:
             settings.fixed_delta_seconds = 0.05  # 20 FPS
             self.world.apply_settings(settings)
             
-            # Get the blueprint library
-            blueprint_library = self.world.get_blueprint_library()
-            
-            # Initialize components
-            self.sensor_manager = SensorManager(self.world)
-            if not self.sensor_manager:
-                raise RuntimeError("Failed to initialize sensor manager")
-            
-            self.decision_maker = DecisionMaker()
-            self.ethical_engine = EthicalEngine()
-            self.ml_manager = MLManager()
-            
-            # Set up spectator
-            self.spectator = self.world.get_spectator()
-            
             # Initialize traffic manager
             self.traffic_manager = self.client.get_trafficmanager()
             self.traffic_manager.set_global_distance_to_leading_vehicle(2.0)
             self.traffic_manager.set_synchronous_mode(True)
+            self.traffic_manager.set_hybrid_physics_mode(True)  # Enable hybrid physics
+            self.traffic_manager.set_hybrid_physics_radius(70.0)  # Set physics radius
             
             print("Simulator initialized successfully with Town01 map")
             return True
@@ -255,9 +242,12 @@ class CarlaSimulator:
                             self.vehicle.set_autopilot(False)
                             
                             # Register vehicle with traffic manager
-                            self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)
-                            self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)
-                            self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)
+                            self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)  # Always obey traffic lights
+                            self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)  # Maintain normal speed
+                            self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)  # Safe following distance
+                            self.traffic_manager.auto_lane_change(self.vehicle, False)  # Disable automatic lane changes
+                            self.traffic_manager.random_left_lanechange_percentage(self.vehicle, 0)  # No random lane changes
+                            self.traffic_manager.random_right_lanechange_percentage(self.vehicle, 0)  # No random lane changes
                             
                             print("Vehicle registered with traffic manager")
                             return True
