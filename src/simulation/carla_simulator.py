@@ -364,24 +364,24 @@ class CarlaSimulator:
 
     def _calculate_steering(self, angle_to_next_waypoint: float) -> float:
         """Calculate steering angle based on angle to next waypoint."""
-        # More conservative steering with lower maximum angle
-        max_steering = 0.08  # Reduced from 0.1 to 0.08
+        # More responsive steering for turns
+        max_steering = 0.15  # Increased from 0.08 to 0.15 for better turning
         
-        # Increased angle threshold for more stable straight driving
-        angle_threshold = 35.0  # Increased from 30.0 to 35.0
+        # Adjust angle threshold for better turn detection
+        angle_threshold = 25.0  # Reduced from 35.0 to 25.0 for earlier turn detection
         
-        # More gradual steering response
+        # More aggressive steering response for turns
         if abs(angle_to_next_waypoint) > angle_threshold:
-            steering = max_steering * 0.3  # Reduced from 0.4 to 0.3
+            steering = max_steering * 0.8  # Increased from 0.3 to 0.8 for sharper turns
         else:
-            steering = max_steering * 0.2  # Reduced from 0.3 to 0.2
+            steering = max_steering * 0.4  # Increased from 0.2 to 0.4 for smoother turns
             
         # Apply steering direction
         if angle_to_next_waypoint < 0:
             steering = -steering
             
-        # Increased smoothing for more stable steering
-        self.steering = self.steering * 0.99 + steering * 0.01  # Increased from 0.98 to 0.99
+        # Less smoothing for more responsive steering
+        self.steering = self.steering * 0.95 + steering * 0.05  # Reduced from 0.99 to 0.95
         
         return self.steering
 
@@ -422,21 +422,21 @@ class CarlaSimulator:
         
         # Adjust speed based on angle to next waypoint
         if abs(angle_to_next_waypoint) > 30.0:
-            # Sharp turn, reduce speed
-            target_velocity *= 0.8
+            # Sharp turn, reduce speed more
+            target_velocity *= 0.6  # Reduced from 0.8 to 0.6
         elif abs(angle_to_next_waypoint) > 15.0:
             # Moderate turn, slightly reduce speed
-            target_velocity *= 0.9
+            target_velocity *= 0.8  # Reduced from 0.9 to 0.8
             
         # Calculate throttle and brake based on speed difference
         if speed_diff > 0:
             # Need to accelerate
-            throttle = min(0.7, speed_diff / 10.0)  # Cap throttle at 0.7
+            throttle = min(0.8, speed_diff / 10.0)  # Increased from 0.7 to 0.8
             brake = 0.0
         else:
             # Need to decelerate
             throttle = 0.0
-            brake = min(0.3, abs(speed_diff) / 10.0)  # Cap brake at 0.3
+            brake = min(0.4, abs(speed_diff) / 10.0)  # Increased from 0.3 to 0.4
             
         # Apply smoothing
         self.throttle = self.throttle * 0.95 + throttle * 0.05
