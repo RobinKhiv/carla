@@ -580,25 +580,41 @@ class CarlaSimulator:
                             print("Warning: Vehicle is not on road")
                             continue
                         
-                        # Get next waypoint
-                        next_waypoint = current_waypoint.next(1.0)[0]
+                        # Get next waypoint (look further ahead)
+                        next_waypoint = current_waypoint.next(5.0)[0]  # Look 5 meters ahead
                         if next_waypoint is None:
                             print("Warning: No next waypoint found")
                             continue
                         
+                        # Get vehicle transform
+                        vehicle_transform = self.vehicle.get_transform()
+                        vehicle_location = vehicle_transform.location
+                        vehicle_rotation = vehicle_transform.rotation
+                        
                         # Calculate direction to next waypoint
-                        vehicle_location = self.vehicle.get_location()
                         next_location = next_waypoint.transform.location
                         direction = next_location - vehicle_location
                         direction = direction.make_unit_vector()
                         
-                        # Calculate angle between vehicle forward vector and direction to next waypoint
-                        vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                        angle = math.degrees(math.acos(vehicle_forward.dot(direction)))
+                        # Calculate vehicle forward vector
+                        vehicle_forward = carla.Vector3D(
+                            math.cos(math.radians(vehicle_rotation.yaw)),
+                            math.sin(math.radians(vehicle_rotation.yaw)),
+                            0
+                        )
                         
-                        # Calculate steering based on angle
-                        max_steer = 0.5
-                        steer = max(-max_steer, min(max_steer, angle / 45.0))
+                        # Calculate cross product to determine turn direction
+                        cross = vehicle_forward.cross(direction)
+                        turn_direction = -1 if cross.z < 0 else 1
+                        
+                        # Calculate angle between vehicle forward vector and direction to next waypoint
+                        dot_product = vehicle_forward.dot(direction)
+                        angle = math.degrees(math.acos(max(-1.0, min(1.0, dot_product))))
+                        
+                        # Calculate steering based on angle and turn direction
+                        max_steer = 0.8  # Increased max steering
+                        steer = turn_direction * max_steer * (angle / 45.0)
+                        steer = max(-max_steer, min(max_steer, steer))
                         
                         # Check for obstacles
                         obstacle_detected = False
@@ -616,6 +632,8 @@ class CarlaSimulator:
                         
                         # Print control values for debugging
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
+                        print(f"Vehicle angle to waypoint: {angle} degrees")
+                        print(f"Turn direction: {turn_direction}")
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
@@ -627,11 +645,11 @@ class CarlaSimulator:
                         # Print vehicle transform for debugging
                         transform = self.vehicle.get_transform()
                         print(f"Vehicle position: {transform.location}")
+                        print(f"Vehicle rotation: {transform.rotation}")
                         
-                        # Print vehicle waypoint for debugging
-                        waypoint = self.world.get_map().get_waypoint(transform.location)
-                        if waypoint:
-                            print(f"Vehicle is on road: {waypoint.is_junction}")
+                        # Print waypoint information
+                        print(f"Current waypoint: {current_waypoint.transform.location}")
+                        print(f"Next waypoint: {next_waypoint.transform.location}")
                         
                     except Exception as e:
                         print(f"Error applying controls: {e}")
