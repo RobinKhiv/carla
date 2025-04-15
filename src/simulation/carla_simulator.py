@@ -170,6 +170,13 @@ class CarlaSimulator:
                 print("No spawn points available for vehicles")
                 return
             
+            # Configure traffic manager for better behavior
+            self.traffic_manager.set_global_distance_to_leading_vehicle(2.0)
+            self.traffic_manager.set_synchronous_mode(True)
+            self.traffic_manager.set_random_device_seed(0)
+            self.traffic_manager.set_hybrid_physics_mode(True)
+            self.traffic_manager.set_hybrid_physics_radius(70.0)
+            
             # Spawn vehicles
             for i in range(min(num_vehicles, len(spawn_points))):
                 try:
@@ -187,8 +194,13 @@ class CarlaSimulator:
                         )
                         if vehicle is not None:
                             self.other_vehicles.append(vehicle)
-                            # Set autopilot
-                            vehicle.set_autopilot(True)
+                            # Set autopilot with traffic manager
+                            vehicle.set_autopilot(True, self.traffic_manager.get_port())
+                            # Set speed limit
+                            self.traffic_manager.vehicle_percentage_speed_difference(vehicle, 30.0)  # 30% slower
+                            # Set collision detection
+                            self.traffic_manager.auto_lane_change(vehicle, False)
+                            self.traffic_manager.distance_to_leading_vehicle(vehicle, 2.0)
                 except Exception as e:
                     print(f"Warning: Failed to spawn vehicle at point {i}: {e}")
                     continue
@@ -602,6 +614,29 @@ class CarlaSimulator:
                         if next_waypoint is None:
                             print("Warning: No next waypoint found")
                             continue
+                        
+                        # Calculate road curvature
+                        road_curvature = 0.0
+                        try:
+                            # Get the next few waypoints to estimate curvature
+                            next_waypoints = current_waypoint.next(20.0)
+                            if len(next_waypoints) > 1:
+                                # Get the road's forward vector at current waypoint
+                                current_forward = current_waypoint.transform.get_forward_vector()
+                                
+                                # Get the road's forward vector at the next waypoint
+                                next_forward = next_waypoints[-1].transform.get_forward_vector()
+                                
+                                # Calculate the change in direction using the cross product
+                                turn_vector = current_forward.cross(next_forward)
+                                
+                                # The z-component of the cross product tells us if it's a right or left turn
+                                road_curvature = turn_vector.z
+                                
+                                # Normalize the curvature and apply a scaling factor
+                                road_curvature = max(-1.0, min(1.0, road_curvature * 2.0))
+                        except Exception as e:
+                            print(f"Error calculating road curvature: {e}")
                         
                         # Get vehicle transform
                         vehicle_transform = self.vehicle.get_transform()
