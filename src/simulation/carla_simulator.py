@@ -770,6 +770,34 @@ class CarlaSimulator:
                         # Ensure steering stays within bounds
                         steer = max(-0.5, min(0.5, steer))
                         
+                        # Check traffic light state
+                        traffic_light_state = self.check_traffic_light()
+                        if traffic_light_state == 'red':
+                            # Get current velocity
+                            current_velocity = self.vehicle.get_velocity().length()
+                            
+                            # Calculate stopping distance
+                            stopping_distance = 5.0  # meters
+                            current_distance = self.vehicle.get_location().distance(
+                                self.world.get_map().get_waypoint(self.vehicle.get_location()).transform.location
+                            )
+                            
+                            if current_distance <= stopping_distance:
+                                # Stop at red light
+                                throttle = 0.0
+                                brake = 1.0  # Full brake
+                                steer = 0.0  # Don't steer while stopped
+                                print("Red light detected - stopping")
+                            else:
+                                # Gradually slow down as approaching red light
+                                throttle = 0.0
+                                brake = min(0.5, (current_distance - stopping_distance) / 10.0)
+                                print("Red light ahead - slowing down")
+                        elif traffic_light_state == 'yellow':
+                            # Slow down for yellow light
+                            speed_factor *= 0.3  # Reduce speed to 30%
+                            print("Yellow light detected - slowing down")
+                        
                         # Calculate speed based on road curvature and obstacles
                         max_speed = 5.0
                         speed_factor = 1.0 - abs(road_curvature)  # Reduce speed based on curvature
