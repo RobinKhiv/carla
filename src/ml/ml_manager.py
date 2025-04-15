@@ -61,11 +61,15 @@ class MLManager:
     def _create_decision_model(self) -> nn.Module:
         """Create the decision model for making driving decisions."""
         return nn.Sequential(
+            nn.Linear(128, 256),  # Input size matches perception model output
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 3)  # throttle, brake, steer
+            nn.Linear(64, 3)  # throttle, brake, steer
         )
 
     def _create_ethical_model(self) -> nn.Module:
@@ -124,15 +128,38 @@ class MLManager:
 
     def make_decision(self, features: torch.Tensor) -> Dict[str, float]:
         """Make a driving decision based on processed features."""
-        with torch.no_grad():
-            controls = self.decision_model(features)
-            controls = controls.squeeze().cpu().numpy()
-        
-        return {
-            'throttle': float(controls[0]),
-            'brake': float(controls[1]),
-            'steer': float(controls[2])
-        }
+        try:
+            with torch.no_grad():
+                # Ensure features are in the correct shape
+                if isinstance(features, tuple):
+                    features = features[0]  # Take the first element if it's a tuple
+                
+                # Ensure features have the correct shape [batch_size, 128]
+                if len(features.shape) == 1:
+                    features = features.unsqueeze(0)  # Add batch dimension if missing
+                
+                # Process through decision model
+                controls = self.decision_model(features)
+                controls = controls.squeeze().cpu().numpy()
+                
+                # Apply sigmoid to throttle and brake to ensure values between 0 and 1
+                controls[0] = 1 / (1 + np.exp(-controls[0]))  # throttle
+                controls[1] = 1 / (1 + np.exp(-controls[1]))  # brake
+                controls[2] = np.tanh(controls[2])  # steer (between -1 and 1)
+            
+            return {
+                'throttle': float(controls[0]),
+                'brake': float(controls[1]),
+                'steer': float(controls[2])
+            }
+        except Exception as e:
+            print(f"Error making decision: {e}")
+            # Return safe default values in case of error
+            return {
+                'throttle': 0.0,
+                'brake': 1.0,  # Default to braking for safety
+                'steer': 0.0
+            }
 
     def evaluate_ethics(self, features: torch.Tensor) -> Dict[str, float]:
         """Evaluate ethical considerations based on processed features."""
