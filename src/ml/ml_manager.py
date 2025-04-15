@@ -58,14 +58,48 @@ class MLManager:
 
     def process_sensor_data(self, sensor_data: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Process sensor data through the perception model."""
-        # Convert sensor data to tensor
-        camera_data = torch.from_numpy(sensor_data['camera']).float().to(self.device)
-        
-        # Process through perception model
-        with torch.no_grad():
-            features = self.perception_model(camera_data)
-        
-        return features, features
+        try:
+            # Get camera data and ensure it's in the correct format
+            camera_data = sensor_data['camera']
+            
+            # Convert to tensor and ensure correct shape
+            if isinstance(camera_data, np.ndarray):
+                # Ensure the array is in the correct format (H, W, C)
+                if len(camera_data.shape) == 3:
+                    # If channels are first, transpose to (H, W, C)
+                    if camera_data.shape[0] == 3:
+                        camera_data = np.transpose(camera_data, (1, 2, 0))
+                elif len(camera_data.shape) == 2:
+                    # If grayscale, convert to RGB
+                    camera_data = np.stack([camera_data] * 3, axis=-1)
+                
+                # Convert to tensor and normalize
+                camera_tensor = torch.from_numpy(camera_data).float()
+                camera_tensor = camera_tensor / 255.0  # Normalize to [0, 1]
+                
+                # Add batch dimension and ensure channels are first
+                camera_tensor = camera_tensor.permute(2, 0, 1).unsqueeze(0)
+                
+                # Move to device
+                camera_tensor = camera_tensor.to(self.device)
+                
+                # Process through perception model
+                with torch.no_grad():
+                    classification, regression = self.perception_model(camera_tensor)
+                
+                return classification, regression
+            else:
+                raise ValueError("Camera data must be a numpy array")
+        except Exception as e:
+            print(f"Error processing camera data: {e}")
+            # Return zero tensors with correct shape in case of error
+            batch_size = 1
+            classification_shape = (batch_size, 128)  # Adjust based on your model's output
+            regression_shape = (batch_size, 4)  # Adjust based on your model's output
+            return (
+                torch.zeros(classification_shape, device=self.device),
+                torch.zeros(regression_shape, device=self.device)
+            )
 
     def make_decision(self, features: torch.Tensor) -> Dict[str, float]:
         """Make a driving decision based on processed features."""
