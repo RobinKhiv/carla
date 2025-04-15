@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 from ..sensors.sensor_manager import SensorManager
 from ..ai.decision_maker import DecisionMaker
 from ..ethics.ethical_engine import EthicalEngine
+from ..ml.ml_manager import MLManager
 
 class CarlaSimulator:
     def __init__(self, host: str = 'localhost', port: int = 2000):
@@ -18,6 +19,7 @@ class CarlaSimulator:
         self.sensor_manager = None
         self.decision_maker = None
         self.ethical_engine = None
+        self.ml_manager = None
         self.spectator = None
         self.running = False
         self.pedestrians = []
@@ -38,6 +40,7 @@ class CarlaSimulator:
             self.sensor_manager = SensorManager(self.world)
             self.decision_maker = DecisionMaker()
             self.ethical_engine = EthicalEngine()
+            self.ml_manager = MLManager()
             
             # Set up spectator
             self.spectator = self.world.get_spectator()
