@@ -24,16 +24,38 @@ class MLManager:
     def _create_perception_model(self) -> nn.Module:
         """Create the perception model for processing sensor data."""
         return nn.Sequential(
+            # Input shape: [batch_size, 3, 600, 800]
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(2),
+            nn.MaxPool2d(2),  # [batch_size, 32, 300, 400]
+            
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Linear(64 * 16 * 16, 256),
+            nn.MaxPool2d(2),  # [batch_size, 64, 150, 200]
+            
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
             nn.ReLU(),
-            nn.Linear(256, 128)
+            nn.MaxPool2d(2),  # [batch_size, 128, 75, 100]
+            
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),  # [batch_size, 256, 37, 50]
+            
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),  # [batch_size, 512, 18, 25]
+            
+            nn.Flatten(),  # [batch_size, 512 * 18 * 25]
+            
+            nn.Linear(512 * 18 * 25, 2048),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            
+            nn.Linear(2048, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            
+            nn.Linear(512, 128)  # Final feature size
         )
 
     def _create_decision_model(self) -> nn.Module:
@@ -85,20 +107,19 @@ class MLManager:
                 
                 # Process through perception model
                 with torch.no_grad():
-                    classification, regression = self.perception_model(camera_tensor)
+                    features = self.perception_model(camera_tensor)
                 
-                return classification, regression
+                return features, features
             else:
                 raise ValueError("Camera data must be a numpy array")
         except Exception as e:
             print(f"Error processing camera data: {e}")
             # Return zero tensors with correct shape in case of error
             batch_size = 1
-            classification_shape = (batch_size, 128)  # Adjust based on your model's output
-            regression_shape = (batch_size, 4)  # Adjust based on your model's output
+            feature_shape = (batch_size, 128)  # Final feature size
             return (
-                torch.zeros(classification_shape, device=self.device),
-                torch.zeros(regression_shape, device=self.device)
+                torch.zeros(feature_shape, device=self.device),
+                torch.zeros(feature_shape, device=self.device)
             )
 
     def make_decision(self, features: torch.Tensor) -> Dict[str, float]:
