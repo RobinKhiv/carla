@@ -110,9 +110,6 @@ class CarlaSimulator:
                             walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
                             if walker is not None:
                                 try:
-                                    # Disable collisions for the walker
-                                    walker.set_simulate_physics(False)
-                                    
                                     # Add to our list
                                     self.pedestrians.append(walker)
                                     
@@ -135,9 +132,6 @@ class CarlaSimulator:
                                             if destination is not None:
                                                 controller.go_to_location(destination)
                                                 controller.set_max_speed(1.4)
-                                            
-                                            # Enable physics after controller is attached
-                                            walker.set_simulate_physics(True)
                                         except Exception as e:
                                             print(f"Warning: Failed to start walker controller: {e}")
                                             if controller in self.walker_controllers:
@@ -587,6 +581,11 @@ class CarlaSimulator:
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
+                        
+                        # Print vehicle state for debugging
+                        velocity = self.vehicle.get_velocity()
+                        print(f"Vehicle velocity: {velocity.length()} m/s")
+                        
                     except Exception as e:
                         print(f"Error applying controls: {e}")
                         continue
