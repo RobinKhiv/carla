@@ -117,24 +117,33 @@ class CarlaSimulator:
                                     self.pedestrians.append(walker)
                                     
                                     # Create and attach controller
-                                    controller = self.world.spawn_actor(
-                                        self.world.get_blueprint_library().find('controller.ai.walker'),
-                                        carla.Transform(),
-                                        walker
-                                    )
+                                    controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
+                                    if controller_bp is None:
+                                        print("Warning: Failed to find walker controller blueprint")
+                                        continue
                                     
+                                    controller = self.world.spawn_actor(controller_bp, carla.Transform(), walker)
                                     if controller is not None:
                                         self.walker_controllers.append(controller)
-                                        controller.start()
                                         
-                                        # Set random destination
-                                        destination = self.world.get_random_location_from_navigation()
-                                        if destination is not None:
-                                            controller.go_to_location(destination)
-                                            controller.set_max_speed(1.4)
-                                        
-                                        # Enable physics after controller is attached
-                                        walker.set_simulate_physics(True)
+                                        # Start controller
+                                        try:
+                                            controller.start()
+                                            
+                                            # Set random destination
+                                            destination = self.world.get_random_location_from_navigation()
+                                            if destination is not None:
+                                                controller.go_to_location(destination)
+                                                controller.set_max_speed(1.4)
+                                            
+                                            # Enable physics after controller is attached
+                                            walker.set_simulate_physics(True)
+                                        except Exception as e:
+                                            print(f"Warning: Failed to start walker controller: {e}")
+                                            if controller in self.walker_controllers:
+                                                self.walker_controllers.remove(controller)
+                                            controller.destroy()
+                                            continue
                                     
                                     spawn_points.append(spawn_point)
                                     if len(spawn_points) >= num_pedestrians:
@@ -353,34 +362,50 @@ class CarlaSimulator:
                         # Spawn pedestrian with physics disabled
                         walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
                         if walker is not None:
-                            # Disable collisions initially
-                            walker.set_simulate_physics(False)
-                            
-                            # Add to our list
-                            self.pedestrians.append(walker)
-                            
-                            # Add AI controller for the pedestrian
-                            controller = self.world.spawn_actor(
-                                self.world.get_blueprint_library().find('controller.ai.walker'),
-                                carla.Transform(),
-                                walker
-                            )
-                            
-                            if controller is not None:
-                                self.walker_controllers.append(controller)
-                                controller.start()
+                            try:
+                                # Disable collisions initially
+                                walker.set_simulate_physics(False)
                                 
-                                # Make pedestrian walk across the road
-                                target_location = carla.Location(
-                                    x=pedestrian_location.x,
-                                    y=pedestrian_location.y + 30.0,  # Walk 30 meters across
-                                    z=pedestrian_location.z
-                                )
-                                controller.go_to_location(target_location)
-                                controller.set_max_speed(1.4)  # Walking speed
+                                # Add to our list
+                                self.pedestrians.append(walker)
                                 
-                                # Enable physics after controller is attached
-                                walker.set_simulate_physics(True)
+                                # Add AI controller for the pedestrian
+                                controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
+                                if controller_bp is None:
+                                    print("Warning: Failed to find walker controller blueprint")
+                                    continue
+                                
+                                controller = self.world.spawn_actor(controller_bp, carla.Transform(), walker)
+                                if controller is not None:
+                                    self.walker_controllers.append(controller)
+                                    
+                                    # Start controller
+                                    try:
+                                        controller.start()
+                                        
+                                        # Make pedestrian walk across the road
+                                        target_location = carla.Location(
+                                            x=pedestrian_location.x,
+                                            y=pedestrian_location.y + 30.0,  # Walk 30 meters across
+                                            z=pedestrian_location.z
+                                        )
+                                        controller.go_to_location(target_location)
+                                        controller.set_max_speed(1.4)  # Walking speed
+                                        
+                                        # Enable physics after controller is attached
+                                        walker.set_simulate_physics(True)
+                                    except Exception as e:
+                                        print(f"Warning: Failed to start walker controller: {e}")
+                                        if controller in self.walker_controllers:
+                                            self.walker_controllers.remove(controller)
+                                        controller.destroy()
+                                        continue
+                            except Exception as e:
+                                print(f"Warning: Failed to setup pedestrian controller: {e}")
+                                if walker in self.pedestrians:
+                                    self.pedestrians.remove(walker)
+                                walker.destroy()
+                                continue
                 except Exception as e:
                     print(f"Warning: Failed to spawn pedestrian {i} in trolley scenario: {e}")
                     continue
@@ -454,6 +479,9 @@ class CarlaSimulator:
                 if not self.ml_manager:
                     raise RuntimeError("Failed to initialize ML manager")
             
+            # Initialize sensor data dictionary
+            self.sensor_manager.sensor_data = {}
+            
             # Setup sensors with proper callback
             def camera_callback(image):
                 """Callback for camera sensor data."""
@@ -464,6 +492,8 @@ class CarlaSimulator:
                     array = array[:, :, :3]  # Remove alpha channel
                     
                     # Store the image data
+                    if not hasattr(self.sensor_manager, 'sensor_data'):
+                        self.sensor_manager.sensor_data = {}
                     self.sensor_manager.sensor_data['camera'] = array
                 except Exception as e:
                     print(f"Error in camera callback: {e}")
@@ -506,7 +536,11 @@ class CarlaSimulator:
                         print("Warning: Sensor manager not initialized")
                         continue
                     
-                    sensor_data = self.sensor_manager.get_sensor_data()
+                    if not hasattr(self.sensor_manager, 'sensor_data'):
+                        print("Warning: Sensor data not initialized")
+                        continue
+                    
+                    sensor_data = self.sensor_manager.sensor_data
                     if not sensor_data:
                         print("Warning: No sensor data available")
                         continue
