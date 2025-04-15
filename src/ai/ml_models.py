@@ -166,6 +166,14 @@ class MLManager:
                      training: bool = True) -> Dict[str, Any]:
         """Make driving decisions based on processed features."""
         with torch.no_grad():
+            # Ensure features are in the correct format
+            if isinstance(processed_features, tuple):
+                processed_features = processed_features[0]  # Take the first element if input is a tuple
+            if not isinstance(processed_features, torch.Tensor):
+                processed_features = torch.tensor(processed_features, dtype=torch.float32)
+            if len(processed_features.shape) == 1:
+                processed_features = processed_features.unsqueeze(0)  # Add batch dimension if missing
+            
             # Get base controls and risk score
             controls, risk_score = self.decision_model(processed_features)
             

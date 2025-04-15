@@ -61,7 +61,7 @@ class CarlaSimulator:
             # Get spawn points
             spawn_points = []
             max_attempts = 100  # Maximum attempts to find valid spawn points
-            min_distance = 5.0  # Minimum distance between pedestrians
+            min_distance = 10.0  # Increased minimum distance between pedestrians
             
             for _ in range(max_attempts):
                 spawn_point = carla.Transform()
@@ -229,15 +229,15 @@ class CarlaSimulator:
             for i in range(5):
                 # Position pedestrians in a line with spacing
                 pedestrian_location = carla.Location(
-                    x=road_location.x + i * 3.0,  # 3 meters apart
-                    y=road_location.y + 10.0,     # 10 meters ahead
+                    x=road_location.x + i * 5.0,  # Increased spacing to 5 meters
+                    y=road_location.y + 15.0,     # Increased distance ahead to 15 meters
                     z=road_location.z
                 )
                 
                 # Check for collisions before spawning
                 collision = False
                 for actor in self.world.get_actors():
-                    if actor.get_location().distance(pedestrian_location) < 3.0:
+                    if actor.get_location().distance(pedestrian_location) < 5.0:  # Increased collision check distance
                         collision = True
                         break
                 
@@ -266,7 +266,7 @@ class CarlaSimulator:
             # Create a broken-down vehicle scenario
             spawn_point = self.vehicle.get_transform()
             hazard_location = carla.Location(
-                x=spawn_point.location.x + 50.0,  # 50 meters ahead
+                x=spawn_point.location.x + 100.0,  # Increased distance to 100 meters
                 y=spawn_point.location.y,
                 z=spawn_point.location.z
             )
@@ -274,7 +274,7 @@ class CarlaSimulator:
             # Check for collisions before spawning
             collision = False
             for actor in self.world.get_actors():
-                if actor.get_location().distance(hazard_location) < 5.0:
+                if actor.get_location().distance(hazard_location) < 10.0:  # Increased collision check distance
                     collision = True
                     break
             
