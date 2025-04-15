@@ -682,45 +682,62 @@ class CarlaSimulator:
                             print("High angle detected - applying recovery behavior")
                         
                         # Calculate speed with improved responsiveness
-                        target_speed = 25.0  # Increased base target speed from 20.0 km/h
+                        target_speed = 15.0  # Reduced base target speed from 25.0 km/h
                         
                         # Adjust speed based on angle with improved sensitivity
-                        angle_speed_factor = 1.0 - (angle / 40.0)  # Reduced from 45.0 for earlier speed reduction
+                        angle_speed_factor = 1.0 - (angle / 30.0)  # Reduced from 40.0 for earlier speed reduction
                         target_speed *= angle_speed_factor
                         
                         # Adjust speed based on road curvature with improved response
                         if abs(road_curvature) > 0.05:  # Reduced threshold from 0.1
-                            target_speed *= (1.0 - abs(road_curvature) * 3.0)  # Increased sensitivity
+                            target_speed *= (1.0 - abs(road_curvature) * 4.0)  # Increased sensitivity
                         
                         # Ensure minimum speed for stability
-                        target_speed = max(8.0, target_speed)  # Increased from 5.0
+                        target_speed = max(5.0, target_speed)  # Reduced from 8.0
                         
                         # Calculate throttle and brake with improved response
                         current_speed = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
                         speed_diff = target_speed - current_speed
                         
-                        # More aggressive acceleration when far from target speed
-                        if speed_diff > 3.0:  # Reduced from 5.0
-                            throttle = min(1.0, speed_diff / 5.0)  # Increased from 10.0
+                        # More conservative acceleration when far from target speed
+                        if speed_diff > 2.0:  # Reduced from 3.0
+                            throttle = min(0.5, speed_diff / 10.0)  # Reduced from 1.0 and increased denominator
                             brake = 0.0
                         # More responsive braking when overspeeding
-                        elif speed_diff < -3.0:  # Reduced from -5.0
+                        elif speed_diff < -2.0:  # Reduced from -3.0
                             throttle = 0.0
-                            brake = min(1.0, abs(speed_diff) / 5.0)  # Increased from 10.0
+                            brake = min(0.5, abs(speed_diff) / 10.0)  # Reduced from 1.0 and increased denominator
                         else:
                             # Maintain current speed with finer control
-                            throttle = 0.15  # Increased from 0.1
+                            throttle = 0.1  # Reduced from 0.15
                             brake = 0.0
                         
                         # Apply speed factor from recovery behavior
                         if hasattr(self, 'speed_factor'):
                             throttle *= self.speed_factor
                         
+                        # Initialize steering value
+                        steer = base_steer  # Use the base_steer value calculated earlier
+                        
+                        # Check vehicle orientation
+                        vehicle_transform = self.vehicle.get_transform()
+                        pitch = vehicle_transform.rotation.pitch
+                        roll = vehicle_transform.rotation.roll
+                        
+                        # If vehicle is tilted too much, try to recover
+                        if abs(pitch) > 0.8 or abs(roll) > 0.8:  # Reduced thresholds from 1.0
+                            print(f"Vehicle tilted - pitch: {pitch}, roll: {roll}")
+                            # More gradual recovery for tilted vehicle
+                            throttle = 0.0
+                            brake = 0.05  # Reduced from 0.1
+                            steer = 0.0
+                            time.sleep(0.1)  # Reduced from 0.2
+                        
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
                             throttle=float(throttle),
                             brake=float(brake),
-                            steer=float(base_steer)  # Use calculated steering
+                            steer=float(steer)  # Use calculated steering
                         )
                         
                         # Print control values for debugging
@@ -728,7 +745,7 @@ class CarlaSimulator:
                         print(f"Vehicle angle to waypoint: {angle} degrees")
                         print(f"Obstacle detected: {False}")
                         print(f"Current velocity: {current_speed:.2f} km/h")
-                        print(f"Vehicle pitch: {0:.1f}°, roll: {0:.1f}°")
+                        print(f"Vehicle pitch: {pitch:.1f}°, roll: {roll:.1f}°")
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
