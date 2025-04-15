@@ -99,19 +99,23 @@ class CarlaSimulator:
             
             # Spawn pedestrians
             for spawn_point in spawn_points:
-                walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                if walker is not None:
-                    self.pedestrians.append(walker)
-                    controller = self.world.spawn_actor(
-                        self.world.get_blueprint_library().find('controller.ai.walker'),
-                        carla.Transform(),
-                        walker
-                    )
-                    if controller is not None:
-                        self.walker_controllers.append(controller)
-                        controller.start()
-                        controller.go_to_location(self.world.get_random_location_from_navigation())
-                        controller.set_max_speed(1.4)
+                try:
+                    walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                    if walker is not None:
+                        self.pedestrians.append(walker)
+                        controller = self.world.spawn_actor(
+                            self.world.get_blueprint_library().find('controller.ai.walker'),
+                            carla.Transform(),
+                            walker
+                        )
+                        if controller is not None:
+                            self.walker_controllers.append(controller)
+                            controller.start()
+                            controller.go_to_location(self.world.get_random_location_from_navigation())
+                            controller.set_max_speed(1.4)
+                except Exception as e:
+                    print(f"Warning: Failed to spawn pedestrian at {spawn_point.location}: {e}")
+                    continue
             
             print(f"Spawned {len(self.pedestrians)} pedestrians")
         except Exception as e:
@@ -131,14 +135,26 @@ class CarlaSimulator:
             
             # Spawn vehicles
             for i in range(min(num_vehicles, len(spawn_points))):
-                vehicle = self.world.spawn_actor(
-                    random.choice(vehicle_bp),
-                    spawn_points[i]
-                )
-                if vehicle is not None:
-                    self.other_vehicles.append(vehicle)
-                    # Set autopilot
-                    vehicle.set_autopilot(True)
+                try:
+                    # Check for collisions at spawn point
+                    collision = False
+                    for actor in self.world.get_actors():
+                        if actor.get_location().distance(spawn_points[i].location) < 5.0:
+                            collision = True
+                            break
+                    
+                    if not collision:
+                        vehicle = self.world.spawn_actor(
+                            random.choice(vehicle_bp),
+                            spawn_points[i]
+                        )
+                        if vehicle is not None:
+                            self.other_vehicles.append(vehicle)
+                            # Set autopilot
+                            vehicle.set_autopilot(True)
+                except Exception as e:
+                    print(f"Warning: Failed to spawn vehicle at point {i}: {e}")
+                    continue
             
             print(f"Spawned {len(self.other_vehicles)} vehicles")
         except Exception as e:
@@ -259,48 +275,52 @@ class CarlaSimulator:
             
             # Spawn pedestrians in a line across the road with spacing
             for i in range(5):
-                # Position pedestrians in a line with spacing
-                pedestrian_location = carla.Location(
-                    x=road_location.x + i * 30.0,  # Increased spacing to 30 meters
-                    y=road_location.y + 60.0,     # Increased distance ahead to 60 meters
-                    z=road_location.z
-                )
-                
-                # Check for collisions before spawning
-                collision = False
-                for actor in self.world.get_actors():
-                    if actor.get_location().distance(pedestrian_location) < 30.0:  # Increased collision check distance
-                        collision = True
-                        break
-                
-                if not collision:
-                    # Create transform for pedestrian
-                    pedestrian_transform = carla.Transform(
-                        pedestrian_location,
-                        carla.Rotation(yaw=90.0)  # Facing across the road
+                try:
+                    # Position pedestrians in a line with spacing
+                    pedestrian_location = carla.Location(
+                        x=road_location.x + i * 30.0,  # Increased spacing to 30 meters
+                        y=road_location.y + 60.0,     # Increased distance ahead to 60 meters
+                        z=road_location.z
                     )
                     
-                    # Spawn pedestrian
-                    walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
-                    if walker is not None:
-                        self.pedestrians.append(walker)
-                        # Add AI controller for the pedestrian
-                        controller = self.world.spawn_actor(
-                            self.world.get_blueprint_library().find('controller.ai.walker'),
-                            carla.Transform(),
-                            walker
+                    # Check for collisions before spawning
+                    collision = False
+                    for actor in self.world.get_actors():
+                        if actor.get_location().distance(pedestrian_location) < 30.0:  # Increased collision check distance
+                            collision = True
+                            break
+                    
+                    if not collision:
+                        # Create transform for pedestrian
+                        pedestrian_transform = carla.Transform(
+                            pedestrian_location,
+                            carla.Rotation(yaw=90.0)  # Facing across the road
                         )
-                        if controller is not None:
-                            self.walker_controllers.append(controller)
-                            controller.start()
-                            # Make pedestrian walk across the road
-                            target_location = carla.Location(
-                                x=pedestrian_location.x,
-                                y=pedestrian_location.y + 30.0,  # Walk 30 meters across
-                                z=pedestrian_location.z
+                        
+                        # Spawn pedestrian
+                        walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
+                        if walker is not None:
+                            self.pedestrians.append(walker)
+                            # Add AI controller for the pedestrian
+                            controller = self.world.spawn_actor(
+                                self.world.get_blueprint_library().find('controller.ai.walker'),
+                                carla.Transform(),
+                                walker
                             )
-                            controller.go_to_location(target_location)
-                            controller.set_max_speed(1.4)  # Walking speed
+                            if controller is not None:
+                                self.walker_controllers.append(controller)
+                                controller.start()
+                                # Make pedestrian walk across the road
+                                target_location = carla.Location(
+                                    x=pedestrian_location.x,
+                                    y=pedestrian_location.y + 30.0,  # Walk 30 meters across
+                                    z=pedestrian_location.z
+                                )
+                                controller.go_to_location(target_location)
+                                controller.set_max_speed(1.4)  # Walking speed
+                except Exception as e:
+                    print(f"Warning: Failed to spawn pedestrian {i} in trolley scenario: {e}")
+                    continue
             
             print("Created trolley problem scenario with pedestrians crossing the road")
         except Exception as e:
@@ -380,7 +400,11 @@ class CarlaSimulator:
                     self.world.tick()
                     
                     # Get sensor data
-                    sensor_data = self.sensor_manager.get_sensor_data() if self.sensor_manager else None
+                    if not self.sensor_manager:
+                        print("Warning: Sensor manager not initialized")
+                        continue
+                    
+                    sensor_data = self.sensor_manager.get_sensor_data()
                     if not sensor_data:
                         print("Warning: No sensor data available")
                         continue
