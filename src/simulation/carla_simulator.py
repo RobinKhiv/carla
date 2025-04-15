@@ -632,6 +632,29 @@ class CarlaSimulator:
                         vehicle_to_center = vehicle_location - road_center
                         lateral_offset = vehicle_to_center.dot(road_right)
                         
+                        # Calculate the road's curvature at the current waypoint
+                        road_curvature = 0.0
+                        try:
+                            # Get the next few waypoints to estimate curvature
+                            next_waypoints = current_waypoint.next(20.0)  # Increased lookahead distance
+                            if len(next_waypoints) > 1:
+                                # Get the road's forward vector at current waypoint
+                                current_forward = current_waypoint.transform.get_forward_vector()
+                                
+                                # Get the road's forward vector at the next waypoint
+                                next_forward = next_waypoints[-1].transform.get_forward_vector()
+                                
+                                # Calculate the change in direction using the cross product
+                                turn_vector = current_forward.cross(next_forward)
+                                
+                                # The z-component of the cross product tells us if it's a right or left turn
+                                road_curvature = turn_vector.z
+                                
+                                # Normalize the curvature and apply a scaling factor
+                                road_curvature = max(-1.0, min(1.0, road_curvature * 2.0))
+                        except Exception as e:
+                            print(f"Error calculating road curvature: {e}")
+                            
                         # Calculate steering based on lateral offset and road curvature
                         max_steer = 0.8
                         
