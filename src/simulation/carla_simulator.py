@@ -1113,23 +1113,21 @@ class CarlaSimulator:
         if cross < 0:
             angle = -angle
             
-        # Improved steering calculation with more aggressive response to high angles
-        max_steer = 0.3  # Increased from 0.15 for sharper turns
-        angle_threshold = 15.0  # Reduced from 25.0 for earlier response
+        # More conservative steering calculation for better corner handling
+        max_steer = 0.2  # Reduced from 0.3 for smoother turns
+        angle_threshold = 20.0  # Increased from 15.0 for more gradual response
         
-        # Calculate base steering with more aggressive response
+        # Calculate base steering with more gradual response
         if abs(angle) > angle_threshold:
-            # More aggressive recovery behavior for high angles
-            steer = max_steer * (angle / abs(angle))
-            # Reduce speed more during recovery
-            current_velocity *= 0.3  # Reduced from 0.4
+            # More gradual recovery behavior for high angles
+            steer = max_steer * (angle / abs(angle)) * 0.8  # Reduced from 1.0
         else:
-            # Normal steering with more responsive transitions
-            steer = (angle / angle_threshold) * max_steer
+            # Normal steering with more gradual transitions
+            steer = (angle / angle_threshold) * max_steer * 0.7  # Reduced from 1.0
             
-        # Apply smoothing to steering with reduced smoothing factor
+        # Apply smoothing to steering with increased smoothing factor
         if hasattr(self, 'last_steer'):
-            smoothing_factor = 0.8  # Reduced from 0.9 for more responsive steering
+            smoothing_factor = 0.9  # Increased from 0.8 for smoother transitions
             steer = smoothing_factor * self.last_steer + (1 - smoothing_factor) * steer
             
         self.last_steer = steer
@@ -1143,53 +1141,6 @@ class CarlaSimulator:
         # Get vehicle's current location and rotation
         vehicle_location = vehicle_transform.location
         vehicle_rotation = vehicle_transform.rotation
-        
-        # Check if vehicle is stuck (no movement despite throttle)
-        if hasattr(self, 'last_position'):
-            distance_moved = vehicle_location.distance(self.last_position)
-            if distance_moved < 0.1 and current_velocity < 1.0:  # Vehicle hasn't moved much and is very slow
-                # Check if we're near a parked car
-                near_parked_car = False
-                for actor in self.world.get_actors():
-                    if actor.type_id.startswith('vehicle.') and actor != self.vehicle:
-                        distance = actor.get_location().distance(vehicle_location)
-                        velocity = actor.get_velocity().length()
-                        if distance < 5.0 and velocity < 0.1:  # Close to a parked car
-                            near_parked_car = True
-                            break
-                
-                if near_parked_car:
-                    # More aggressive unstuck behavior when near parked cars
-                    if hasattr(self, 'stuck_counter'):
-                        self.stuck_counter += 1
-                    else:
-                        self.stuck_counter = 1
-                        
-                    if self.stuck_counter > 3:  # Reduced from 5 for faster response
-                        # Apply reverse throttle and steering to get unstuck
-                        throttle = -0.7  # Increased reverse throttle
-                        brake = 0.0
-                        # Add more aggressive random steering
-                        steer = random.uniform(-0.5, 0.5)  # Increased steering range
-                        print("Vehicle appears to be stuck near parked car, attempting to get unstuck")
-                        return throttle, brake
-                else:
-                    # Normal stuck behavior
-                    if hasattr(self, 'stuck_counter'):
-                        self.stuck_counter += 1
-                    else:
-                        self.stuck_counter = 1
-                        
-                    if self.stuck_counter > 5:
-                        throttle = -0.5
-                        brake = 0.0
-                        steer = random.uniform(-0.3, 0.3)
-                        print("Vehicle appears to be stuck, attempting to get unstuck")
-                        return throttle, brake
-            else:
-                self.stuck_counter = 0
-        
-        self.last_position = vehicle_location
         
         # Calculate vector to next waypoint
         waypoint_vector = carla.Location(
@@ -1206,11 +1157,11 @@ class CarlaSimulator:
              math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
         ))
         
-        # More conservative speed reduction based on angle
+        # More gradual speed reduction based on angle
         if abs(angle) > 30.0:  # Increased from 20.0
-            target_velocity *= 0.8  # Increased from 0.7 for less aggressive slowing
+            target_velocity *= 0.95  # Increased from 0.9 for less aggressive slowing
         elif abs(angle) > 15.0:  # Increased from 10.0
-            target_velocity *= 0.9  # Increased from 0.8 for less aggressive slowing
+            target_velocity *= 0.98  # Increased from 0.95 for less aggressive slowing
             
         # Check for obstacles with different handling for different types
         min_speed = 5.0  # Minimum speed in km/h
@@ -1221,11 +1172,11 @@ class CarlaSimulator:
                 if distance < 15.0:  # Reduced from 20.0 for more focused detection
                     # Less aggressive speed reduction for pedestrians
                     if distance < 5.0:  # Very close
-                        target_velocity = max(min_speed, target_velocity * 0.7)  # Reduced from 0.6
+                        target_velocity = max(min_speed, target_velocity * 0.9)  # Increased from 0.8
                     elif distance < 10.0:  # Moderately close
-                        target_velocity = max(min_speed, target_velocity * 0.8)  # Reduced from 0.7
+                        target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
                     else:  # Far but detected
-                        target_velocity = max(min_speed, target_velocity * 0.9)  # Reduced from 0.8
+                        target_velocity = max(min_speed, target_velocity * 0.98)  # Increased from 0.95
                     break
             # Handle parked cars differently
             elif actor.type_id.startswith('vehicle.') and actor != self.vehicle:
@@ -1236,33 +1187,33 @@ class CarlaSimulator:
                     if velocity < 0.1:  # Consider it parked if velocity is very low
                         # Less aggressive speed reduction for parked cars
                         if distance < 5.0:  # Very close
-                            target_velocity = max(min_speed, target_velocity * 0.8)  # Less reduction than for pedestrians
+                            target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
                         else:  # Moderately close
-                            target_velocity = max(min_speed, target_velocity * 0.9)  # Minimal reduction
+                            target_velocity = max(min_speed, target_velocity * 0.98)  # Increased from 0.95
                     else:  # Moving vehicle
                         # More aggressive reduction for moving vehicles
                         if distance < 5.0:
-                            target_velocity = max(min_speed, target_velocity * 0.6)
+                            target_velocity = max(min_speed, target_velocity * 0.8)
                         elif distance < 10.0:
-                            target_velocity = max(min_speed, target_velocity * 0.7)
+                            target_velocity = max(min_speed, target_velocity * 0.9)
                     break
         
-        # Calculate throttle and brake with more aggressive acceleration
+        # Calculate throttle and brake with more gradual acceleration
         if speed_diff > 0:
-            # Accelerate more aggressively
+            # Accelerate more gradually
             throttle = min(0.8, speed_diff / target_velocity)  # Increased from 0.7
             brake = 0.0
         else:
             # Only brake when significantly over target speed
             throttle = 0.0
-            brake = min(0.2, abs(speed_diff) / target_velocity)  # Reduced from 0.3
+            brake = min(0.1, abs(speed_diff) / target_velocity)  # Reduced from 0.2
             
-        # Apply smoothing to throttle and brake with reduced smoothing
+        # Apply smoothing to throttle and brake with increased smoothing
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.6  # Reduced from 0.7 for more responsive acceleration
+            smoothing_factor = 0.9  # Increased from 0.8 for smoother acceleration
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.6  # Reduced from 0.7
+            smoothing_factor = 0.9  # Increased from 0.8
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
             
         self.last_throttle = throttle
