@@ -664,14 +664,31 @@ class CarlaSimulator:
                         turn_direction = -1.0 if cross_product.z < 0 else 1.0
                         
                         # Calculate steering based on angle and turn direction
-                        max_steer = 0.8
-                        angle_factor = min(1.0, angle / 45.0)  # Normalize angle to 45 degrees
+                        max_steer = 0.5  # Reduced from 0.8 to 0.5
+                        angle_factor = min(1.0, angle / 60.0)  # Increased angle threshold from 45 to 60 degrees
                         steer = turn_direction * angle_factor * max_steer
                         
-                        # Apply smoothing to steering
+                        # Apply stronger smoothing to steering
                         if hasattr(self, 'last_steer'):
-                            steer = self.last_steer * 0.7 + steer * 0.3
+                            steer = self.last_steer * 0.8 + steer * 0.2  # Increased smoothing from 0.7/0.3 to 0.8/0.2
                         self.last_steer = steer
+                        
+                        # Add lane keeping behavior
+                        lane_center_offset = 0.0
+                        try:
+                            # Get the current lane's center
+                            current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
+                            if current_waypoint:
+                                lane_center = current_waypoint.transform.location
+                                # Calculate offset from lane center
+                                lane_center_offset = (self.vehicle.get_location().x - lane_center.x) / 3.0  # Normalize by lane width
+                                # Add small correction to steering
+                                steer += lane_center_offset * 0.1  # Small correction factor
+                        except Exception as e:
+                            print(f"Error calculating lane center: {e}")
+                        
+                        # Print lane keeping info
+                        print(f"Lane center offset: {lane_center_offset}")
                         
                         # Check for obstacles with more precise detection
                         obstacle_detected = False
@@ -729,6 +746,16 @@ class CarlaSimulator:
                                                     'forward_dot': forward_dot,
                                                     'lane_type': 'sidewalk'
                                                 })
+                        
+                        # Print obstacle detection info
+                        if obstacle_info:
+                            print("Obstacles detected:")
+                            for info in obstacle_info:
+                                print(f"- {info['type']} at {info['distance']:.1f}m, forward_dot: {info['forward_dot']:.2f}")
+                                if 'lane_type' in info:
+                                    print(f"  Lane type: {info['lane_type']}")
+                        else:
+                            print("No obstacles detected")
                         
                         # Check traffic light state
                         traffic_light_state = self.check_traffic_light()
