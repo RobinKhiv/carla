@@ -18,6 +18,9 @@ class CarlaSimulator:
             self.running = False
             self.traffic_manager = None
             self.initialized = False
+            self.pedestrians = []
+            self.other_vehicles = []
+            self.walker_controllers = []
             
         except Exception as e:
             print(f"Error initializing CARLA simulator: {e}")
@@ -177,6 +180,141 @@ class CarlaSimulator:
             except Exception as e:
                 print(f"Error updating camera: {e}")
 
+    def spawn_pedestrians(self, num_pedestrians: int = 20):
+        """Spawn pedestrians in the simulation."""
+        try:
+            # Get pedestrian blueprints
+            walker_bp = self.world.get_blueprint_library().filter('walker.pedestrian.*')
+            if not walker_bp:
+                print("Warning: No pedestrian blueprints found")
+                return
+            
+            # Get spawn points
+            spawn_points = []
+            max_attempts = 100
+            min_distance = 50.0
+            
+            # Get all existing actors
+            existing_actors = list(self.world.get_actors())
+            
+            for _ in range(max_attempts):
+                try:
+                    # Get a random location from navigation mesh
+                    spawn_point = carla.Transform()
+                    spawn_point.location = self.world.get_random_location_from_navigation()
+                    
+                    if spawn_point.location is not None:
+                        # Check for collisions with existing actors
+                        collision = False
+                        for actor in existing_actors:
+                            if actor.get_location().distance(spawn_point.location) < min_distance:
+                                collision = True
+                                break
+                        
+                        if not collision:
+                            # Try to spawn a pedestrian
+                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                            if walker is not None:
+                                try:
+                                    # Add to our list
+                                    self.pedestrians.append(walker)
+                                    
+                                    # Create and attach controller
+                                    controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
+                                    if controller_bp is None:
+                                        print("Warning: Failed to find walker controller blueprint")
+                                        continue
+                                    
+                                    controller = self.world.spawn_actor(controller_bp, carla.Transform(), walker)
+                                    if controller is not None:
+                                        self.walker_controllers.append(controller)
+                                        
+                                        # Start controller
+                                        try:
+                                            # Set pedestrian to be non-collidable with other pedestrians
+                                            walker.set_simulate_physics(False)
+                                            controller.start()
+                                            
+                                            # Set random destination
+                                            destination = self.world.get_random_location_from_navigation()
+                                            if destination is not None:
+                                                controller.go_to_location(destination)
+                                                controller.set_max_speed(1.4)
+                                        except Exception as e:
+                                            print(f"Warning: Failed to start walker controller: {e}")
+                                            if controller in self.walker_controllers:
+                                                self.walker_controllers.remove(controller)
+                                            controller.destroy()
+                                            continue
+                                    
+                                    spawn_points.append(spawn_point)
+                                    if len(spawn_points) >= num_pedestrians:
+                                        break
+                                except Exception as e:
+                                    print(f"Warning: Failed to setup pedestrian controller: {e}")
+                                    if walker in self.pedestrians:
+                                        self.pedestrians.remove(walker)
+                                    walker.destroy()
+                                    continue
+                except Exception as e:
+                    print(f"Warning: Failed to spawn pedestrian at attempt {_}: {e}")
+                    continue
+            
+            print(f"Spawned {len(self.pedestrians)} pedestrians")
+        except Exception as e:
+            print(f"Error spawning pedestrians: {e}")
+
+    def spawn_other_vehicles(self, num_vehicles: int = 10):
+        """Spawn other vehicles in the simulation."""
+        try:
+            # Get vehicle blueprints
+            vehicle_bp = self.world.get_blueprint_library().filter('vehicle.*')
+            
+            # Get spawn points
+            spawn_points = self.world.get_map().get_spawn_points()
+            if not spawn_points:
+                print("No spawn points available for vehicles")
+                return
+            
+            # Configure traffic manager for better behavior
+            self.traffic_manager.set_global_distance_to_leading_vehicle(2.0)
+            self.traffic_manager.set_synchronous_mode(True)
+            self.traffic_manager.set_random_device_seed(0)
+            self.traffic_manager.set_hybrid_physics_mode(True)
+            self.traffic_manager.set_hybrid_physics_radius(70.0)
+            
+            # Spawn vehicles
+            for i in range(min(num_vehicles, len(spawn_points))):
+                try:
+                    # Check for collisions at spawn point
+                    collision = False
+                    for actor in self.world.get_actors():
+                        if actor.get_location().distance(spawn_points[i].location) < 5.0:
+                            collision = True
+                            break
+                    
+                    if not collision:
+                        vehicle = self.world.spawn_actor(
+                            random.choice(vehicle_bp),
+                            spawn_points[i]
+                        )
+                        if vehicle is not None:
+                            self.other_vehicles.append(vehicle)
+                            # Set autopilot with traffic manager
+                            vehicle.set_autopilot(True, self.traffic_manager.get_port())
+                            # Set speed limit
+                            self.traffic_manager.vehicle_percentage_speed_difference(vehicle, 30.0)  # 30% slower
+                            # Set collision detection
+                            self.traffic_manager.auto_lane_change(vehicle, False)
+                            self.traffic_manager.distance_to_leading_vehicle(vehicle, 2.0)
+                except Exception as e:
+                    print(f"Warning: Failed to spawn vehicle at point {i}: {e}")
+                    continue
+            
+            print(f"Spawned {len(self.other_vehicles)} vehicles")
+        except Exception as e:
+            print(f"Error spawning vehicles: {e}")
+
     def run(self):
         """Run the simulation."""
         try:
@@ -192,6 +330,11 @@ class CarlaSimulator:
             print("Spawning ego vehicle...")
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
+            
+            # Spawn pedestrians and other vehicles
+            print("Spawning pedestrians and other vehicles...")
+            self.spawn_pedestrians(20)  # Spawn 20 pedestrians
+            self.spawn_other_vehicles(10)  # Spawn 10 other vehicles
             
             # Set up camera
             if not self.setup_camera():
@@ -324,7 +467,7 @@ class CarlaSimulator:
         try:
             # Destroy all actors
             for actor in self.world.get_actors():
-                if actor.type_id.startswith('vehicle.'):
+                if actor.type_id.startswith('vehicle.') or actor.type_id.startswith('walker.'):
                     try:
                         actor.destroy()
                     except Exception as e:
@@ -334,6 +477,11 @@ class CarlaSimulator:
             settings = self.world.get_settings()
             settings.synchronous_mode = False
             self.world.apply_settings(settings)
+            
+            # Clear lists
+            self.pedestrians.clear()
+            self.other_vehicles.clear()
+            self.walker_controllers.clear()
             
             # Reset components
             self.vehicle = None
