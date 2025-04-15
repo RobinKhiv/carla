@@ -60,7 +60,7 @@ class DecisionModel(nn.Module):
             nn.ReLU(),
             nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Linear(16, 2)  # throttle and steering
+            nn.Linear(16, 3)  # Changed from 2 to 3 for throttle, brake, and steer
         )
         
         # Risk assessment layers
