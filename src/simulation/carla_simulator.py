@@ -4,8 +4,12 @@ import math
 import numpy as np
 import random
 import cv2
+import torch
+import torch.nn as nn
+import torch.optim as optim
 from typing import List, Dict, Any, Tuple
 from .obstacle_avoidance import ObstacleAvoidance
+from .ethical_priorities import EthicalPriorities
 
 class CarlaSimulator:
     def __init__(self, host: str = 'localhost', port: int = 2000):
@@ -471,11 +475,23 @@ class CarlaSimulator:
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
             
-            # Initialize obstacle avoidance model
-            self.obstacle_avoidance = ObstacleAvoidance()
+            # Initialize reinforcement learning agent with ethical priorities
+            ethical_priorities = EthicalPriorities(
+                pedestrian_weight=1.0,  # High priority for pedestrian safety
+                passenger_weight=1.0,   # Equal priority for passenger safety
+                property_weight=0.5,    # Lower priority for property damage
+                traffic_law_weight=0.8  # High priority for traffic laws
+            )
+            self.rl_agent = RLEthicalAgent(
+                state_size=5,  # Speed, nearby actors, traffic light, next waypoint x, y
+                action_size=9,  # 3 throttle levels × 3 steering levels
+                ethical_priorities=ethical_priorities
+            )
             
             # Main simulation loop
             self.running = True
+            episode = 0
+            total_reward = 0
             
             while self.running:
                 try:
@@ -510,51 +526,8 @@ class CarlaSimulator:
                             next_waypoint.transform.location.z
                         ])
                         
-                        # Detect obstacles
-                        obstacles = []
-                        
-                        # Check for vehicles
-                        for vehicle in self.world.get_actors().filter('vehicle.*'):
-                            if vehicle.id != self.vehicle.id:
-                                distance = vehicle.get_location().distance(self.vehicle.get_location())
-                                if distance < 50.0:  # Only consider vehicles within 50 meters
-                                    obstacles.append((
-                                        np.array([
-                                            vehicle.get_location().x,
-                                            vehicle.get_location().y,
-                                            vehicle.get_location().z
-                                        ]),
-                                        distance,
-                                        'vehicle'
-                                    ))
-                        
-                        # Check for pedestrians
-                        for pedestrian in self.world.get_actors().filter('walker.*'):
-                            distance = pedestrian.get_location().distance(self.vehicle.get_location())
-                            if distance < 20.0:  # Only consider pedestrians within 20 meters
-                                obstacles.append((
-                                    np.array([
-                                        pedestrian.get_location().x,
-                                        pedestrian.get_location().y,
-                                        pedestrian.get_location().z
-                                    ]),
-                                    distance,
-                                    'pedestrian'
-                                ))
-                        
-                        # Check for traffic lights
-                        for traffic_light in self.world.get_actors().filter('traffic.traffic_light'):
-                            distance = traffic_light.get_location().distance(self.vehicle.get_location())
-                            if distance < 30.0:  # Only consider traffic lights within 30 meters
-                                obstacles.append((
-                                    np.array([
-                                        traffic_light.get_location().x,
-                                        traffic_light.get_location().y,
-                                        traffic_light.get_location().z
-                                    ]),
-                                    distance,
-                                    'traffic_light'
-                                ))
+                        # Detect obstacles using CARLA's built-in features
+                        obstacles = self.detect_obstacles()
                         
                         # Get control values from ML model
                         throttle, brake, steer = self.obstacle_avoidance.predict_control(
@@ -562,28 +535,66 @@ class CarlaSimulator:
                             obstacles, next_waypoint_location
                         )
                         
+                        # Get RL state and action
+                        state = self.rl_agent.get_state(self.vehicle, self.world)
+                        action = self.rl_agent.select_action(state)
+                        
+                        # Convert RL action to control adjustments
+                        throttle_level = action // 3  # 0, 1, or 2
+                        steer_level = action % 3      # 0, 1, or 2
+                        
+                        # Adjust controls based on RL
+                        throttle_adjustment = [0.0, 0.5, 1.0][throttle_level]
+                        steer_adjustment = [-0.5, 0.0, 0.5][steer_level]
+                        
+                        # Combine ML and RL controls
+                        final_throttle = (throttle + throttle_adjustment) / 2
+                        final_steer = (steer + steer_adjustment) / 2
+                        
                         # Apply control with safety checks
                         control = carla.VehicleControl()
                         
                         # Safety checks
                         if speed > 50.0:  # Max speed limit
-                            throttle = 0.0
+                            final_throttle = 0.0
                             brake = 0.3
                         
                         # Apply controls
-                        control.throttle = throttle
+                        control.throttle = final_throttle
                         control.brake = brake
-                        control.steer = steer
+                        control.steer = final_steer
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
+                        
+                        # Get next state for RL
+                        next_state = self.rl_agent.get_state(self.vehicle, self.world)
+                        
+                        # Calculate reward
+                        reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
+                        total_reward += reward
+                        
+                        # Check if episode is done
+                        done = False
+                        if self.vehicle.get_velocity().length() < 0.1:  # Vehicle stopped
+                            done = True
+                        
+                        # Store experience
+                        self.rl_agent.remember(state, action, reward, next_state, done)
+                        
+                        # Train the agent
+                        loss = self.rl_agent.train()
+                        
+                        # Update target network periodically
+                        if episode % 10 == 0:
+                            self.rl_agent.update_target_network()
                         
                         # Update model with experience
                         if len(obstacles) > 0:
                             # Calculate target controls based on safety
                             target_throttle = 0.0 if speed > 30.0 else 0.3
                             target_brake = 0.3 if speed > 30.0 else 0.0
-                            target_steer = steer  # Keep current steering
+                            target_steer = final_steer  # Keep current steering
                             
                             # Add experience to model
                             self.obstacle_avoidance.update_model((
@@ -595,11 +606,15 @@ class CarlaSimulator:
                             ))
                         
                         # Print vehicle state
-                        print(f"\rVehicle State - Speed: {speed:.2f} km/h, "
-                              f"Position: ({vehicle_location[0]:.2f}, {vehicle_location[1]:.2f}), "
-                              f"Rotation: {vehicle_rotation[1]:.2f}°, "
-                              f"Obstacles: {len(obstacles)}, "
-                              f"Steering: {steer:.2f}", end="")
+                        print(f"\rEpisode: {episode}, Total Reward: {total_reward:.2f}, "
+                              f"Speed: {speed:.2f} km/h, Position: ({vehicle_location[0]:.2f}, {vehicle_location[1]:.2f}), "
+                              f"Obstacles: {len(obstacles)}, Steering: {final_steer:.2f}, "
+                              f"Epsilon: {self.rl_agent.epsilon:.2f}, Loss: {loss:.4f}", end="")
+                        
+                        if done:
+                            episode += 1
+                            total_reward = 0
+                            print()  # New line for next episode
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
