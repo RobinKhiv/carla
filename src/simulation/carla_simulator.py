@@ -211,10 +211,15 @@ class CarlaSimulator:
             # Try different spawn points until successful
             for spawn_point in spawn_points:
                 try:
+                    # Check if spawn point is on the road
+                    waypoint = self.world.get_map().get_waypoint(spawn_point.location)
+                    if waypoint is None:
+                        continue  # Skip if not on road
+                    
                     # Check for collisions at spawn point
                     collision = False
                     for actor in self.world.get_actors():
-                        if actor.get_location().distance(spawn_point.location) < 10.0:  # Increased collision radius
+                        if actor.get_location().distance(spawn_point.location) < 10.0:
                             collision = True
                             break
                     
@@ -589,6 +594,11 @@ class CarlaSimulator:
                         # Print vehicle transform for debugging
                         transform = self.vehicle.get_transform()
                         print(f"Vehicle position: {transform.location}")
+                        
+                        # Print vehicle waypoint for debugging
+                        waypoint = self.world.get_map().get_waypoint(transform.location)
+                        if waypoint:
+                            print(f"Vehicle is on road: {waypoint.is_junction}")
                         
                     except Exception as e:
                         print(f"Error applying controls: {e}")
