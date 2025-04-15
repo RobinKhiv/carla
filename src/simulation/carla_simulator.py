@@ -1113,21 +1113,21 @@ class CarlaSimulator:
         if cross < 0:
             angle = -angle
             
-        # More conservative steering calculation for better corner handling
-        max_steer = 0.15  # Reduced from 0.2 for smoother turns
-        angle_threshold = 25.0  # Increased from 20.0 for more gradual response
+        # More conservative steering calculation for better stability
+        max_steer = 0.1  # Reduced from 0.15 for more stable steering
+        angle_threshold = 30.0  # Increased from 25.0 for more gradual response
         
         # Calculate base steering with more gradual response
         if abs(angle) > angle_threshold:
             # More gradual recovery behavior for high angles
-            steer = max_steer * (angle / abs(angle)) * 0.6  # Reduced from 0.8
+            steer = max_steer * (angle / abs(angle)) * 0.4  # Reduced from 0.6
         else:
             # Normal steering with more gradual transitions
-            steer = (angle / angle_threshold) * max_steer * 0.5  # Reduced from 0.7
+            steer = (angle / angle_threshold) * max_steer * 0.3  # Reduced from 0.5
             
         # Apply smoothing to steering with increased smoothing factor
         if hasattr(self, 'last_steer'):
-            smoothing_factor = 0.95  # Increased from 0.9 for smoother transitions
+            smoothing_factor = 0.98  # Increased from 0.95 for smoother transitions
             steer = smoothing_factor * self.last_steer + (1 - smoothing_factor) * steer
             
         self.last_steer = steer
