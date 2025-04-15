@@ -53,6 +53,9 @@ class CarlaSimulator:
             
             # Initialize components
             self.sensor_manager = SensorManager(self.world)
+            if not self.sensor_manager:
+                raise RuntimeError("Failed to initialize sensor manager")
+            
             self.decision_maker = DecisionMaker()
             self.ethical_engine = EthicalEngine()
             self.ml_manager = MLManager()
@@ -65,6 +68,7 @@ class CarlaSimulator:
             self.traffic_manager.set_global_distance_to_leading_vehicle(2.0)
             self.traffic_manager.set_synchronous_mode(True)
             
+            print("Simulator initialized successfully")
             return True
         except Exception as e:
             print(f"Error initializing simulator: {e}")
@@ -102,35 +106,42 @@ class CarlaSimulator:
                             # Try to spawn a pedestrian
                             walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
                             if walker is not None:
-                                # Disable collisions for the walker
-                                walker.set_simulate_physics(False)
-                                
-                                # Add to our list
-                                self.pedestrians.append(walker)
-                                
-                                # Create and attach controller
-                                controller = self.world.spawn_actor(
-                                    self.world.get_blueprint_library().find('controller.ai.walker'),
-                                    carla.Transform(),
-                                    walker
-                                )
-                                
-                                if controller is not None:
-                                    self.walker_controllers.append(controller)
-                                    controller.start()
+                                try:
+                                    # Disable collisions for the walker
+                                    walker.set_simulate_physics(False)
                                     
-                                    # Set random destination
-                                    destination = self.world.get_random_location_from_navigation()
-                                    if destination is not None:
-                                        controller.go_to_location(destination)
-                                        controller.set_max_speed(1.4)
+                                    # Add to our list
+                                    self.pedestrians.append(walker)
                                     
-                                    # Enable physics after controller is attached
-                                    walker.set_simulate_physics(True)
-                                
-                                spawn_points.append(spawn_point)
-                                if len(spawn_points) >= num_pedestrians:
-                                    break
+                                    # Create and attach controller
+                                    controller = self.world.spawn_actor(
+                                        self.world.get_blueprint_library().find('controller.ai.walker'),
+                                        carla.Transform(),
+                                        walker
+                                    )
+                                    
+                                    if controller is not None:
+                                        self.walker_controllers.append(controller)
+                                        controller.start()
+                                        
+                                        # Set random destination
+                                        destination = self.world.get_random_location_from_navigation()
+                                        if destination is not None:
+                                            controller.go_to_location(destination)
+                                            controller.set_max_speed(1.4)
+                                        
+                                        # Enable physics after controller is attached
+                                        walker.set_simulate_physics(True)
+                                    
+                                    spawn_points.append(spawn_point)
+                                    if len(spawn_points) >= num_pedestrians:
+                                        break
+                                except Exception as e:
+                                    print(f"Warning: Failed to setup pedestrian controller: {e}")
+                                    if walker in self.pedestrians:
+                                        self.pedestrians.remove(walker)
+                                    walker.destroy()
+                                    continue
                 except Exception as e:
                     print(f"Warning: Failed to spawn pedestrian at attempt {_}: {e}")
                     continue
@@ -410,8 +421,15 @@ class CarlaSimulator:
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
             
-            if self.sensor_manager:
-                self.sensor_manager.setup_sensors(self.vehicle)
+            # Initialize sensor manager if not already done
+            if not self.sensor_manager:
+                self.sensor_manager = SensorManager(self.world)
+                if not self.sensor_manager:
+                    raise RuntimeError("Failed to initialize sensor manager")
+            
+            # Setup sensors
+            if not self.sensor_manager.setup_sensors(self.vehicle):
+                raise RuntimeError("Failed to setup sensors")
             
             # Spawn traffic
             print("Spawning traffic...")
