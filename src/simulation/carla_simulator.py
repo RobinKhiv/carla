@@ -667,20 +667,6 @@ class CarlaSimulator:
                             # Get control from traffic manager
                             control = self.vehicle.get_control()
                             
-                            # Get state for RL agent
-                            state = self.rl_agent.get_state(self.vehicle, self.world)
-                            
-                            # Select action based on current state
-                            action = self.rl_agent.select_action(state)
-                            
-                            # Convert RL action to control adjustments
-                            throttle_level = action // 3  # 0, 1, or 2
-                            steer_level = action % 3      # 0, 1, or 2
-                            
-                            # Adjust controls based on RL
-                            throttle_adjustment = [0.0, 0.5, 1.0][throttle_level]
-                            steer_adjustment = [-0.5, 0.0, 0.5][steer_level]
-                            
                             if pedestrian_in_path and pedestrian_location:
                                 # Calculate relative position of pedestrian
                                 vehicle_transform = self.vehicle.get_transform()
@@ -694,30 +680,24 @@ class CarlaSimulator:
                                 # Calculate distance to pedestrian
                                 distance_to_pedestrian = vehicle_location.distance(pedestrian_location)
                                 
-                                if distance_to_pedestrian > 5.0:  # If far enough, try to go around
-                                    if is_pedestrian_left:
-                                        # Pedestrian is on the left, steer right more aggressively
-                                        steer_adjustment = 0.8  # Increased from 0.5
-                                    else:
-                                        # Pedestrian is on the right, steer left more aggressively
-                                        steer_adjustment = -0.8  # Increased from -0.5
-                                    
-                                    # Maintain speed while swerving
-                                    control.throttle = (control.throttle + throttle_adjustment * 0.8) / 1.8  # Increased from 0.7
-                                    control.steer = (control.steer + steer_adjustment * 1.0) / 2.0  # Increased from 0.8
-                                    control.brake = 0.0  # No braking while swerving
-                                    
-                                    # Print swerving action
-                                    print(f"\nSwerving {'right' if is_pedestrian_left else 'left'} to avoid pedestrian at {distance_to_pedestrian:.1f}m")
+                                # Always try to go around the pedestrian
+                                if is_pedestrian_left:
+                                    # Pedestrian is on the left, steer right
+                                    control.steer = 0.8
                                 else:
-                                    # Too close, slow down and prepare to stop
-                                    control.throttle = (control.throttle + throttle_adjustment * 0.3) / 1.3
-                                    control.steer = (control.steer + steer_adjustment * 0.3) / 1.3
-                                    control.brake = 0.3
+                                    # Pedestrian is on the right, steer left
+                                    control.steer = -0.8
+                                
+                                # Maintain speed while swerving
+                                control.throttle = 0.8
+                                control.brake = 0.0
+                                
+                                # Print swerving action
+                                print(f"\nSwerving {'right' if is_pedestrian_left else 'left'} to avoid pedestrian at {distance_to_pedestrian:.1f}m")
                             else:
                                 # Normal driving conditions
-                                control.throttle = (control.throttle + throttle_adjustment) / 2
-                                control.steer = (control.steer + steer_adjustment) / 2
+                                control.throttle = 0.8
+                                control.steer = 0.0
                                 control.brake = 0.0
                             
                             # Apply control to vehicle
