@@ -633,6 +633,18 @@ class CarlaSimulator:
                             print("Warning: Vehicle is not on road")
                             continue
                         
+                        # Check for traffic lights
+                        traffic_light_state = self.check_traffic_light()
+                        if traffic_light_state == 'red' or traffic_light_state == 'yellow':
+                            print(f"Traffic light is {traffic_light_state}, stopping...")
+                            # Apply full brake
+                            control = carla.VehicleControl()
+                            control.throttle = 0.0
+                            control.brake = 1.0
+                            control.steer = 0.0
+                            self.vehicle.apply_control(control)
+                            continue
+                        
                         # Get next waypoint with adjusted lookahead distance
                         lookahead_distance = 10.0  # Reduced from 15.0 for more immediate response
                         next_waypoint = current_waypoint.next(lookahead_distance)[0]
@@ -670,6 +682,7 @@ class CarlaSimulator:
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
                         print(f"Vehicle angle to waypoint: {angle} degrees")
                         print(f"Current velocity: {current_velocity:.2f} km/h")
+                        print(f"Traffic light state: {traffic_light_state}")
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
