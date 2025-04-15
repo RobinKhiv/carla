@@ -61,6 +61,7 @@ class CarlaSimulator:
             # Get spawn points
             spawn_points = []
             max_attempts = 100  # Maximum attempts to find valid spawn points
+            min_distance = 5.0  # Minimum distance between pedestrians
             
             for _ in range(max_attempts):
                 spawn_point = carla.Transform()
@@ -71,7 +72,7 @@ class CarlaSimulator:
                     # Check for collisions at the spawn point
                     collision = False
                     for actor in self.world.get_actors():
-                        if actor.get_location().distance(spawn_point.location) < 2.0:
+                        if actor.get_location().distance(spawn_point.location) < min_distance:
                             collision = True
                             break
                     
@@ -236,7 +237,7 @@ class CarlaSimulator:
                 # Check for collisions before spawning
                 collision = False
                 for actor in self.world.get_actors():
-                    if actor.get_location().distance(pedestrian_location) < 2.0:
+                    if actor.get_location().distance(pedestrian_location) < 3.0:
                         collision = True
                         break
                 
@@ -251,25 +252,6 @@ class CarlaSimulator:
                     walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
                     if walker is not None:
                         self.pedestrians.append(walker)
-                        
-                        # Add AI controller
-                        controller = self.world.spawn_actor(
-                            self.world.get_blueprint_library().find('controller.ai.walker'),
-                            carla.Transform(),
-                            walker
-                        )
-                        if controller is not None:
-                            self.walker_controllers.append(controller)
-                            controller.start()
-                            
-                            # Make pedestrians walk across the road
-                            target_location = carla.Location(
-                                x=pedestrian_location.x,
-                                y=pedestrian_location.y + 15.0,  # Walk 15 meters across
-                                z=pedestrian_location.z
-                            )
-                            controller.go_to_location(target_location)
-                            controller.set_max_speed(1.4)  # Walking speed
             
             print("Created trolley problem scenario with pedestrians crossing the road")
         except Exception as e:
@@ -304,32 +286,8 @@ class CarlaSimulator:
                 )
                 if hazard_vehicle is not None:
                     self.other_vehicles.append(hazard_vehicle)
-                    
-                    # Create debris around the vehicle with spacing
-                    for i in range(3):
-                        debris_location = carla.Location(
-                            x=hazard_location.x + random.uniform(-3.0, 3.0),
-                            y=hazard_location.y + random.uniform(-3.0, 3.0),
-                            z=hazard_location.z
-                        )
-                        
-                        # Check for debris collisions
-                        debris_collision = False
-                        for actor in self.world.get_actors():
-                            if actor.get_location().distance(debris_location) < 2.0:
-                                debris_collision = True
-                                break
-                        
-                        if not debris_collision:
-                            # Spawn static obstacle
-                            obstacle = self.world.spawn_actor(
-                                self.world.get_blueprint_library().find('static.prop.container'),
-                                carla.Transform(debris_location)
-                            )
-                            if obstacle is not None:
-                                self.other_vehicles.append(obstacle)
             
-            print("Created hazard scenario with broken-down vehicle and debris")
+            print("Created hazard scenario with broken-down vehicle")
         except Exception as e:
             print(f"Error creating hazard scenario: {e}")
 

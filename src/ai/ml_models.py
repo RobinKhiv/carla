@@ -40,34 +40,34 @@ class PerceptionModel(nn.Module):
 
 class DecisionModel(nn.Module):
     """Neural network for making driving decisions."""
-    def __init__(self, input_size: int = 1024):
+    def __init__(self, input_size: int = 256):
         super(DecisionModel, self).__init__()
         self.input_size = input_size
         
         # Feature extraction layers
         self.feature_extractor = nn.Sequential(
-            nn.Linear(input_size, 512),
+            nn.Linear(input_size, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(512, 256),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Dropout(0.3)
         )
         
         # Control output layers
         self.control_layers = nn.Sequential(
-            nn.Linear(256, 128),
+            nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Linear(128, 64),
+            nn.Linear(32, 16),
             nn.ReLU(),
-            nn.Linear(64, 2)  # throttle and steering
+            nn.Linear(16, 2)  # throttle and steering
         )
         
         # Risk assessment layers
         self.risk_layers = nn.Sequential(
-            nn.Linear(256, 128),
+            nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Linear(128, 1),  # single risk score
+            nn.Linear(32, 1),  # single risk score
             nn.Sigmoid()  # ensure output is between 0 and 1
         )
     
@@ -79,6 +79,10 @@ class DecisionModel(nn.Module):
             x = torch.tensor(x, dtype=torch.float32)
         if len(x.shape) == 1:
             x = x.unsqueeze(0)  # Add batch dimension if missing
+        
+        # Verify input size
+        if x.shape[1] != self.input_size:
+            raise ValueError(f"Expected input size {self.input_size}, got {x.shape[1]}")
         
         # Process through feature extractor
         features = self.feature_extractor(x)
