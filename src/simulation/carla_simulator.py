@@ -185,65 +185,67 @@ class CarlaSimulator:
 
     def setup_camera(self):
         """Set up the spectator camera to follow the vehicle."""
-        if not self.vehicle:
-            return
+        try:
+            if not self.vehicle:
+                print("Warning: Cannot setup camera - no vehicle available")
+                return False
 
-        # Initial camera setup
-        transform = self.vehicle.get_transform()
-        yaw = math.radians(transform.rotation.yaw)
-        
-        # Calculate camera position
-        offset = carla.Location(
-            x=-15 * math.cos(yaw),
-            y=15 * math.sin(yaw),
-            z=4
-        )
-        
-        camera_location = transform.location + offset
-        camera_rotation = carla.Rotation(
-            pitch=-10,
-            yaw=transform.rotation.yaw
-        )
-        
-        self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
+            # Get the spectator
+            self.spectator = self.world.get_spectator()
+            if not self.spectator:
+                print("Warning: Failed to get spectator")
+                return False
+
+            # Get vehicle transform
+            vehicle_transform = self.vehicle.get_transform()
+            
+            # Calculate camera position (behind and above the vehicle)
+            camera_location = carla.Location(
+                x=vehicle_transform.location.x - 10.0,
+                y=vehicle_transform.location.y,
+                z=vehicle_transform.location.z + 5.0
+            )
+            
+            # Set camera rotation to look at vehicle
+            camera_rotation = carla.Rotation(
+                pitch=-20.0,
+                yaw=vehicle_transform.rotation.yaw
+            )
+            
+            # Set spectator transform
+            self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
+            print("Camera setup complete")
+            return True
+        except Exception as e:
+            print(f"Error setting up camera: {e}")
+            return False
 
     def update_camera(self):
         """Update the camera position to follow the vehicle."""
-        if not self.vehicle:
-            return
+        try:
+            if not self.vehicle or not self.spectator:
+                return
 
-        transform = self.vehicle.get_transform()
-        yaw = math.radians(transform.rotation.yaw)
-        
-        # Calculate camera position
-        offset = carla.Location(
-            x=-15 * math.cos(yaw),
-            y=15 * math.sin(yaw),
-            z=4
-        )
-        
-        camera_location = transform.location + offset
-        
-        # Calculate target point
-        target_location = transform.location + carla.Location(
-            x=5 * math.cos(yaw),
-            y=5 * math.sin(yaw),
-            z=0
-        )
-        
-        # Calculate direction vector
-        direction = target_location - camera_location
-        
-        # Calculate camera rotation
-        yaw = math.degrees(math.atan2(direction.y, direction.x))
-        pitch = math.degrees(math.atan2(direction.z, math.sqrt(direction.x**2 + direction.y**2)))
-        
-        camera_rotation = carla.Rotation(
-            pitch=pitch - 10,
-            yaw=yaw
-        )
-        
-        self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
+            # Get vehicle transform
+            vehicle_transform = self.vehicle.get_transform()
+            
+            # Calculate camera position (behind and above the vehicle)
+            camera_location = carla.Location(
+                x=vehicle_transform.location.x - 10.0,
+                y=vehicle_transform.location.y,
+                z=vehicle_transform.location.z + 5.0
+            )
+            
+            # Set camera rotation to look at vehicle
+            camera_rotation = carla.Rotation(
+                pitch=-20.0,
+                yaw=vehicle_transform.rotation.yaw
+            )
+            
+            # Set spectator transform
+            self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
+        except Exception as e:
+            print(f"Error updating camera: {e}")
 
     def create_trolley_scenario(self):
         """Create a trolley problem scenario with multiple pedestrians."""
@@ -354,8 +356,11 @@ class CarlaSimulator:
                 raise RuntimeError("Failed to spawn ego vehicle")
             
             # Set up camera and sensors
-            self.setup_camera()
-            self.sensor_manager.setup_sensors(self.vehicle)
+            if not self.setup_camera():
+                print("Warning: Camera setup failed, continuing without camera")
+            
+            if self.sensor_manager:
+                self.sensor_manager.setup_sensors(self.vehicle)
             
             # Spawn traffic
             print("Spawning traffic...")
@@ -375,7 +380,7 @@ class CarlaSimulator:
                     self.world.tick()
                     
                     # Get sensor data
-                    sensor_data = self.sensor_manager.get_sensor_data()
+                    sensor_data = self.sensor_manager.get_sensor_data() if self.sensor_manager else None
                     if not sensor_data:
                         print("Warning: No sensor data available")
                         continue
@@ -412,11 +417,7 @@ class CarlaSimulator:
                         continue
                     
                     # Update camera
-                    try:
-                        self.update_camera()
-                    except Exception as e:
-                        print(f"Error updating camera: {e}")
-                        continue
+                    self.update_camera()
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
