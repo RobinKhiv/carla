@@ -151,21 +151,34 @@ class CarlaSimulator:
             blueprint_library = self.world.get_blueprint_library()
             vehicle_bp = blueprint_library.filter('vehicle.tesla.model3')[0]
             
-            # Get spawn point
+            # Get spawn points
             spawn_points = self.world.get_map().get_spawn_points()
             if not spawn_points:
                 print("No spawn points available")
                 return False
             
-            # Spawn vehicle
-            spawn_point = spawn_points[0]
-            self.vehicle = self.world.spawn_actor(vehicle_bp, spawn_point)
-            if self.vehicle is None:
-                print("Failed to spawn vehicle")
-                return False
+            # Try different spawn points until successful
+            for spawn_point in spawn_points:
+                try:
+                    # Check for collisions at spawn point
+                    collision = False
+                    for actor in self.world.get_actors():
+                        if actor.get_location().distance(spawn_point.location) < 5.0:
+                            collision = True
+                            break
+                    
+                    if not collision:
+                        # Spawn vehicle
+                        self.vehicle = self.world.spawn_actor(vehicle_bp, spawn_point)
+                        if self.vehicle is not None:
+                            print(f"Vehicle spawned successfully at {spawn_point.location}")
+                            return True
+                except Exception as e:
+                    print(f"Failed to spawn at point {spawn_point.location}: {e}")
+                    continue
             
-            print("Vehicle spawned successfully")
-            return True
+            print("Failed to find valid spawn point")
+            return False
         except Exception as e:
             print(f"Error spawning vehicle: {e}")
             return False
@@ -333,6 +346,9 @@ class CarlaSimulator:
             if not self.initialize():
                 raise RuntimeError("Failed to initialize simulator")
             
+            # Clean up any existing actors
+            self.cleanup()
+            
             # Spawn ego vehicle
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
@@ -467,7 +483,10 @@ class CarlaSimulator:
             # Destroy all actors
             for actor in self.world.get_actors():
                 if actor.type_id.startswith('vehicle.') or actor.type_id.startswith('walker.'):
-                    actor.destroy()
+                    try:
+                        actor.destroy()
+                    except Exception as e:
+                        print(f"Error destroying actor {actor}: {e}")
             
             # Reset world settings
             settings = self.world.get_settings()
@@ -487,6 +506,8 @@ class CarlaSimulator:
             self.ml_manager = None
             self.spectator = None
             self.running = False
+            
+            print("Cleanup complete")
         except Exception as e:
             print(f"Error during cleanup: {e}")
 
