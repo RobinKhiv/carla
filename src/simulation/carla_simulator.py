@@ -624,49 +624,19 @@ class CarlaSimulator:
                         dot_product = vehicle_forward.dot(direction)
                         angle = math.degrees(math.acos(max(-1.0, min(1.0, dot_product))))
                         
-                        # Get the road's right vector at the current waypoint
-                        road_right = current_waypoint.transform.get_right_vector()
+                        # Calculate cross product to determine turn direction
+                        cross_product = vehicle_forward.cross(direction)
+                        turn_direction = -1.0 if cross_product.z < 0 else 1.0
                         
-                        # Calculate the vehicle's position relative to the road center
-                        road_center = current_waypoint.transform.location
-                        vehicle_to_center = vehicle_location - road_center
-                        lateral_offset = vehicle_to_center.dot(road_right)
-                        
-                        # Calculate the road's curvature at the current waypoint
-                        road_curvature = 0.0
-                        try:
-                            # Get the next few waypoints to estimate curvature
-                            next_waypoints = current_waypoint.next(20.0)  # Increased lookahead distance
-                            if len(next_waypoints) > 1:
-                                # Get the road's forward vector at current waypoint
-                                current_forward = current_waypoint.transform.get_forward_vector()
-                                
-                                # Get the road's forward vector at the next waypoint
-                                next_forward = next_waypoints[-1].transform.get_forward_vector()
-                                
-                                # Calculate the change in direction using the cross product
-                                turn_vector = current_forward.cross(next_forward)
-                                
-                                # The z-component of the cross product tells us if it's a right or left turn
-                                road_curvature = turn_vector.z
-                                
-                                # Normalize the curvature and apply a scaling factor
-                                road_curvature = max(-1.0, min(1.0, road_curvature * 2.0))
-                        except Exception as e:
-                            print(f"Error calculating road curvature: {e}")
-                            
-                        # Calculate steering based on lateral offset and road curvature
+                        # Calculate steering based on angle and turn direction
                         max_steer = 0.8
+                        angle_factor = min(1.0, angle / 45.0)  # Normalize angle to 45 degrees
+                        steer = turn_direction * angle_factor * max_steer
                         
-                        # Lateral offset correction (keep vehicle centered)
-                        # Reduce the sensitivity of lateral offset correction
-                        lateral_steer = -lateral_offset / 10.0  # Increased denominator from 5.0 to 10.0
-                        
-                        # Road curvature following (follow the road's natural curve)
-                        curvature_steer = road_curvature * 1.5  # Reduced from 2.0 to 1.5
-                        
-                        # Combine the steering components with reduced sensitivity
-                        base_steer = max(-max_steer, min(max_steer, (lateral_steer + curvature_steer) * 0.7))  # Added 0.7 multiplier
+                        # Apply smoothing to steering
+                        if hasattr(self, 'last_steer'):
+                            steer = self.last_steer * 0.7 + steer * 0.3
+                        self.last_steer = steer
                         
                         # Check for obstacles with more precise detection
                         obstacle_detected = False
@@ -730,11 +700,12 @@ class CarlaSimulator:
                         if traffic_light_state == 'red':
                             # Stop at red light
                             throttle = 0.0
-                            brake = 0.5
+                            brake = 1.0  # Full brake
+                            steer = 0.0  # Don't steer while stopped
                             print("Red light detected - stopping")
                         elif traffic_light_state == 'yellow':
                             # Slow down for yellow light
-                            speed_factor *= 0.5  # Reduce speed to 50%
+                            speed_factor = 0.3  # Reduce speed to 30%
                             print("Yellow light detected - slowing down")
                         
                         # Calculate speed based on road curvature and obstacles
@@ -745,10 +716,10 @@ class CarlaSimulator:
                         if is_pedestrian_on_road:
                             speed_factor *= 0.3  # Reduce speed to 30% when pedestrian is on road
                             # Maintain lane position, don't swerve
-                            steer = base_steer
+                            steer = steer * 0.5  # Reduce steering sensitivity
                         else:
                             # Normal speed control
-                            steer = base_steer
+                            steer = steer
                         
                         target_speed = max_speed * max(0.2, speed_factor)
                         
@@ -756,13 +727,14 @@ class CarlaSimulator:
                         current_velocity = self.vehicle.get_velocity().length()
                         
                         # Calculate throttle and brake based on speed difference
-                        speed_diff = target_speed - current_velocity
-                        if speed_diff > 0:
-                            throttle = min(0.3, speed_diff / 2.0)  # Reduced throttle
-                            brake = 0.0
-                        else:
-                            throttle = 0.0
-                            brake = min(0.5, -speed_diff / 2.0)
+                        if traffic_light_state != 'red':  # Only apply speed control if not at red light
+                            speed_diff = target_speed - current_velocity
+                            if speed_diff > 0:
+                                throttle = min(0.3, speed_diff / 2.0)  # Reduced throttle
+                                brake = 0.0
+                            else:
+                                throttle = 0.0
+                                brake = min(0.5, -speed_diff / 2.0)
                         
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
@@ -774,10 +746,6 @@ class CarlaSimulator:
                         # Print control values for debugging
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
                         print(f"Vehicle angle to waypoint: {angle} degrees")
-                        print(f"Lateral offset: {lateral_offset} meters")
-                        print(f"Road curvature: {road_curvature}")
-                        print(f"Target speed: {target_speed} m/s")
-                        print(f"Current speed: {current_velocity} m/s")
                         print(f"Obstacle detected: {obstacle_detected}")
                         
                         # Apply control to vehicle
