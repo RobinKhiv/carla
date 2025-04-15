@@ -126,10 +126,18 @@ class SensorUtils:
         # Extract LiDAR features
         if 'lidar' in sensor_data:
             lidar_data = sensor_data['lidar']
+            # Add more detailed LiDAR features
             features.extend([
                 lidar_data['mean_distance'],
                 lidar_data['min_distance'],
-                lidar_data['max_distance']
+                lidar_data['max_distance'],
+                np.std(lidar_data['distances']),  # Distance variance
+                np.percentile(lidar_data['distances'], 25),  # 25th percentile
+                np.percentile(lidar_data['distances'], 75),  # 75th percentile
+                len(lidar_data['points']),  # Number of points
+                np.mean(lidar_data['points'][:, 0]),  # Mean x position
+                np.mean(lidar_data['points'][:, 1]),  # Mean y position
+                np.mean(lidar_data['points'][:, 2]),  # Mean z position
             ])
         
         # Extract radar features
@@ -137,11 +145,32 @@ class SensorUtils:
             radar_data = sensor_data['radar']
             features.extend([
                 radar_data['mean_velocity'],
-                radar_data['max_velocity']
+                radar_data['max_velocity'],
+                np.std(radar_data['velocities']),  # Velocity variance
+                len(radar_data['points']),  # Number of radar points
+                np.mean(radar_data['points'][:, 0]),  # Mean x position
+                np.mean(radar_data['points'][:, 1]),  # Mean y position
+                np.mean(radar_data['points'][:, 2]),  # Mean z position
             ])
         
-        # Extract camera features (placeholder)
+        # Extract camera features (placeholder for now)
         if 'camera' in sensor_data:
-            features.extend([0.0, 0.0, 0.0])  # Placeholder for actual features
+            camera_data = sensor_data['camera']
+            # Add basic image statistics
+            features.extend([
+                np.mean(camera_data),  # Mean intensity
+                np.std(camera_data),   # Intensity variance
+                np.max(camera_data),   # Max intensity
+                np.min(camera_data),   # Min intensity
+            ])
         
-        return np.array(features) 
+        # Pad or truncate features to match expected input size
+        expected_size = 1024
+        if len(features) < expected_size:
+            # Pad with zeros
+            features.extend([0.0] * (expected_size - len(features)))
+        elif len(features) > expected_size:
+            # Truncate to expected size
+            features = features[:expected_size]
+        
+        return np.array(features, dtype=np.float32) 
