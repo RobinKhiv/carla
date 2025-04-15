@@ -520,16 +520,7 @@ class CarlaSimulator:
             # Clean up any existing actors
             self.cleanup()
             
-            # Spawn traffic first
-            print("Spawning traffic...")
-            # self.spawn_pedestrians(10)
-            # self.spawn_other_vehicles(10)
-            
-            # Wait a moment for traffic to settle
-            for _ in range(10):
-                self.world.tick()
-            
-            # Spawn ego vehicle after traffic
+            # Spawn ego vehicle
             print("Spawning ego vehicle...")
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
@@ -537,24 +528,6 @@ class CarlaSimulator:
             # Set up camera and sensors
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
-            
-            # Create straight line path for testing
-            print("Creating straight line path...")
-            start_location = self.vehicle.get_location()
-            path_length = 1000.0  # 1 kilometer straight path
-            waypoints = []
-            
-            # Create waypoints along a straight line
-            for i in range(100):
-                waypoint_location = carla.Location(
-                    x=start_location.x + (i * 10.0),  # 10 meters between waypoints
-                    y=start_location.y,
-                    z=start_location.z
-                )
-                # Create a waypoint using the map
-                waypoint = self.world.get_map().get_waypoint(waypoint_location)
-                if waypoint:
-                    waypoints.append(waypoint)
             
             # Initialize sensor manager if not already done
             if not self.sensor_manager:
@@ -605,7 +578,6 @@ class CarlaSimulator:
             
             # Main simulation loop
             self.running = True
-            current_waypoint_index = 0
             
             while self.running:
                 try:
@@ -655,19 +627,15 @@ class CarlaSimulator:
                         if not self.vehicle:
                             raise RuntimeError("Vehicle not initialized")
                         
-                        # Get current waypoint from our straight line path
-                        if current_waypoint_index < len(waypoints):
-                            next_waypoint = waypoints[current_waypoint_index]
-                            
-                            # Calculate distance to next waypoint
-                            distance = self.vehicle.get_location().distance(next_waypoint.transform.location)
-                            if distance < 5.0:  # If within 5 meters of waypoint, move to next
-                                current_waypoint_index += 1
-                                if current_waypoint_index >= len(waypoints):
-                                    print("Reached end of path")
-                                    self.running = False
-                                    break
-                                next_waypoint = waypoints[current_waypoint_index]
+                        # Get current waypoint
+                        current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
+                        if current_waypoint is None:
+                            print("Warning: Vehicle is not on road")
+                            continue
+                        
+                        # Get next waypoint with adjusted lookahead distance
+                        lookahead_distance = 10.0  # Reduced from 15.0 for more immediate response
+                        next_waypoint = current_waypoint.next(lookahead_distance)[0]
                         
                         # Calculate angle to waypoint
                         waypoint_location = next_waypoint.transform.location
@@ -716,7 +684,8 @@ class CarlaSimulator:
                         print(f"Vehicle rotation: {transform.rotation}")
                         
                         # Print waypoint information
-                        print(f"Current waypoint: {next_waypoint.transform.location}")
+                        print(f"Current waypoint: {current_waypoint.transform.location}")
+                        print(f"Next waypoint: {next_waypoint.transform.location}")
                         
                     except Exception as e:
                         print(f"Error applying controls: {e}")
@@ -1142,48 +1111,42 @@ class CarlaSimulator:
             print(f"Error in vehicle control update: {e}")
 
     def _calculate_steering(self, vehicle_transform, next_waypoint, current_velocity):
-        """Calculate steering angle with improved stability."""
+        """Calculate steering angle using CARLA's built-in waypoint system."""
         # Get vehicle's current location and rotation
         vehicle_location = vehicle_transform.location
         vehicle_rotation = vehicle_transform.rotation
         
-        # Calculate vector to next waypoint
-        waypoint_vector = carla.Location(
-            next_waypoint.transform.location.x - vehicle_location.x,
-            next_waypoint.transform.location.y - vehicle_location.y,
-            0
-        )
+        # Get the waypoint's transform
+        waypoint_transform = next_waypoint.transform
         
-        # Calculate angle between vehicle's forward vector and waypoint vector
+        # Calculate the angle between the vehicle's forward vector and the waypoint's forward vector
         vehicle_forward = vehicle_transform.get_forward_vector()
+        waypoint_forward = waypoint_transform.get_forward_vector()
+        
+        # Calculate the angle between the two vectors
         angle = math.degrees(math.acos(
-            (vehicle_forward.x * waypoint_vector.x + vehicle_forward.y * waypoint_vector.y) /
+            (vehicle_forward.x * waypoint_forward.x + vehicle_forward.y * waypoint_forward.y) /
             (math.sqrt(vehicle_forward.x**2 + vehicle_forward.y**2) * 
-             math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
+             math.sqrt(waypoint_forward.x**2 + waypoint_forward.y**2))
         ))
         
         # Calculate cross product to determine direction
-        cross = vehicle_forward.x * waypoint_vector.y - vehicle_forward.y * waypoint_vector.x
+        cross = vehicle_forward.x * waypoint_forward.y - vehicle_forward.y * waypoint_forward.x
         if cross < 0:
             angle = -angle
-            
-        # More conservative steering calculation for better stability
-        max_steer = 0.1  # Reduced from 0.15 for more stable steering
-        angle_threshold = 30.0  # Increased from 25.0 for more gradual response
         
-        # Calculate base steering with more gradual response
-        if abs(angle) > angle_threshold:
-            # More gradual recovery behavior for high angles
-            steer = max_steer * (angle / abs(angle)) * 0.4  # Reduced from 0.6
-        else:
-            # Normal steering with more gradual transitions
-            steer = (angle / angle_threshold) * max_steer * 0.3  # Reduced from 0.5
-            
-        # Apply smoothing to steering with increased smoothing factor
+        # Use CARLA's built-in steering calculation
+        # The steering value is normalized between -1.0 (full left) and 1.0 (full right)
+        steer = angle / 70.0  # 70 degrees is approximately the maximum steering angle for most vehicles
+        
+        # Apply bounds to steering
+        steer = max(-1.0, min(1.0, steer))
+        
+        # Apply smoothing to steering
         if hasattr(self, 'last_steer'):
-            smoothing_factor = 0.98  # Increased from 0.95 for smoother transitions
+            smoothing_factor = 0.9  # Adjust this value to control steering smoothness
             steer = smoothing_factor * self.last_steer + (1 - smoothing_factor) * steer
-            
+        
         self.last_steer = steer
         return steer, current_velocity
 
