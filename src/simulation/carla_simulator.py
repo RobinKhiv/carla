@@ -3,6 +3,7 @@ import time
 import math
 import numpy as np
 import random
+import cv2
 from typing import List, Dict, Any
 from ..sensors.sensor_manager import SensorManager
 from ..ai.decision_maker import DecisionMaker
@@ -995,6 +996,269 @@ class CarlaSimulator:
             print("Cleanup complete")
         except Exception as e:
             print(f"Error during cleanup: {e}")
+
+    def setup_sensors(self):
+        """Set up additional sensors for lane detection and keeping."""
+        try:
+            if not self.vehicle:
+                print("Warning: Cannot setup sensors - no vehicle available")
+                return False
+
+            # Get the blueprint library
+            blueprint_library = self.world.get_blueprint_library()
+            
+            # Add lane detection camera
+            lane_camera_bp = blueprint_library.find('sensor.camera.semantic_segmentation')
+            lane_camera_bp.set_attribute('image_size_x', '800')
+            lane_camera_bp.set_attribute('image_size_y', '600')
+            lane_camera_bp.set_attribute('fov', '90')
+            
+            # Position camera to look at the road
+            lane_camera_transform = carla.Transform(
+                carla.Location(x=1.5, z=2.4),  # Mounted on the front of the vehicle
+                carla.Rotation(pitch=-15.0)     # Looking slightly down at the road
+            )
+            
+            # Spawn and attach the camera
+            self.lane_camera = self.world.spawn_actor(
+                lane_camera_bp,
+                lane_camera_transform,
+                attach_to=self.vehicle
+            )
+            
+            # Add callback for lane detection
+            self.lane_camera.listen(self.process_lane_detection)
+            
+            # Add LIDAR for precise distance measurements
+            lidar_bp = blueprint_library.find('sensor.lidar.ray_cast')
+            lidar_bp.set_attribute('range', '50.0')  # 50 meters range
+            lidar_bp.set_attribute('points_per_second', '100000')
+            lidar_bp.set_attribute('rotation_frequency', '10')
+            lidar_bp.set_attribute('channels', '32')
+            lidar_bp.set_attribute('upper_fov', '10.0')
+            lidar_bp.set_attribute('lower_fov', '-30.0')
+            
+            # Position LIDAR on top of the vehicle
+            lidar_transform = carla.Transform(
+                carla.Location(x=0.0, z=2.5),
+                carla.Rotation(pitch=0.0)
+            )
+            
+            # Spawn and attach the LIDAR
+            self.lidar = self.world.spawn_actor(
+                lidar_bp,
+                lidar_transform,
+                attach_to=self.vehicle
+            )
+            
+            # Add callback for LIDAR data
+            self.lidar.listen(self.process_lidar_data)
+            
+            print("Additional sensors setup complete")
+            return True
+            
+        except Exception as e:
+            print(f"Error setting up sensors: {e}")
+            return False
+
+    def process_lane_detection(self, image):
+        """Process lane detection camera data."""
+        try:
+            # Convert image to numpy array
+            array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+            array = np.reshape(array, (image.height, image.width, 4))
+            array = array[:, :, :3]  # Remove alpha channel
+            
+            # Process lane markings
+            lane_markings = self.detect_lane_markings(array)
+            
+            # Update lane keeping parameters based on detected markings
+            if lane_markings:
+                self.update_lane_keeping(lane_markings)
+                
+        except Exception as e:
+            print(f"Error processing lane detection: {e}")
+
+    def process_lidar_data(self, data):
+        """Process LIDAR data for precise distance measurements."""
+        try:
+            # Convert LIDAR data to numpy array
+            points = np.frombuffer(data.raw_data, dtype=np.dtype('f4'))
+            points = np.reshape(points, (int(points.shape[0] / 4), 4))
+            
+            # Process points to detect lane boundaries and obstacles
+            lane_boundaries = self.detect_lane_boundaries(points)
+            
+            # Update vehicle control based on detected boundaries
+            if lane_boundaries:
+                self.update_vehicle_control(lane_boundaries)
+                
+        except Exception as e:
+            print(f"Error processing LIDAR data: {e}")
+
+    def detect_lane_markings(self, image):
+        """Detect lane markings in the camera image."""
+        try:
+            # Convert to grayscale
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            
+            # Apply Gaussian blur
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            
+            # Apply Canny edge detection
+            edges = cv2.Canny(blurred, 50, 150)
+            
+            # Apply Hough transform to detect lines
+            lines = cv2.HoughLinesP(edges, 1, np.pi/180, 50, minLineLength=50, maxLineGap=20)
+            
+            if lines is not None:
+                left_lines = []
+                right_lines = []
+                
+                for line in lines:
+                    x1, y1, x2, y2 = line[0]
+                    # Calculate line parameters
+                    if x2 != x1:
+                        slope = (y2 - y1) / (x2 - x1)
+                        intercept = y1 - slope * x1
+                        
+                        # Classify as left or right lane
+                        if slope < 0:
+                            left_lines.append((slope, intercept))
+                        else:
+                            right_lines.append((slope, intercept))
+                
+                # Calculate average lane positions
+                left_lane = np.mean([-intercept/slope for slope, intercept in left_lines]) if left_lines else None
+                right_lane = np.mean([-intercept/slope for slope, intercept in right_lines]) if right_lines else None
+                
+                return {'left': left_lane, 'right': right_lane}
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error in lane marking detection: {e}")
+            return None
+
+    def detect_lane_boundaries(self, points):
+        """Detect lane boundaries from LIDAR data."""
+        try:
+            # Filter points to road surface
+            road_points = points[points[:, 2] > -0.5]  # Points above -0.5m in height
+            
+            if len(road_points) > 0:
+                # Calculate lane boundaries using point cloud
+                left_boundary = np.min(road_points[:, 0])
+                right_boundary = np.max(road_points[:, 0])
+                
+                return {'left': left_boundary, 'right': right_boundary}
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error in lane boundary detection: {e}")
+            return None
+
+    def update_lane_keeping(self, lane_markings):
+        """Update lane keeping parameters based on detected lane markings."""
+        try:
+            if not lane_markings:
+                return
+
+            # Calculate lane center and offset
+            left_lane = lane_markings.get('left', None)
+            right_lane = lane_markings.get('right', None)
+            
+            if left_lane and right_lane:
+                # Calculate lane center
+                lane_center = (left_lane + right_lane) / 2.0
+                
+                # Get vehicle position relative to lane center
+                vehicle_location = self.vehicle.get_location()
+                vehicle_transform = self.vehicle.get_transform()
+                
+                # Calculate offset from lane center
+                lane_offset = vehicle_location.x - lane_center
+                
+                # Calculate angle to lane center
+                lane_angle = math.atan2(lane_center - vehicle_location.x, 
+                                      vehicle_location.y - vehicle_location.y)
+                vehicle_yaw = math.radians(vehicle_transform.rotation.yaw)
+                angle_diff = lane_angle - vehicle_yaw
+                
+                # Calculate steering correction
+                offset_correction = -lane_offset * 0.1  # Proportional gain
+                angle_correction = -angle_diff * 0.2    # Proportional gain
+                
+                # Combine corrections with smoothing
+                if hasattr(self, 'last_steer'):
+                    self.last_steer = self.last_steer * 0.8 + (offset_correction + angle_correction) * 0.2
+                else:
+                    self.last_steer = offset_correction + angle_correction
+                
+                # Apply bounds to steering
+                self.last_steer = max(-0.3, min(0.3, self.last_steer))
+                
+                # Print debug information
+                print(f"Lane keeping - Offset: {lane_offset:.3f}m, Angle: {math.degrees(angle_diff):.1f}°, Steer: {self.last_steer:.3f}")
+                
+        except Exception as e:
+            print(f"Error in lane keeping update: {e}")
+
+    def update_vehicle_control(self, lane_boundaries):
+        """Update vehicle control based on detected lane boundaries."""
+        try:
+            if not lane_boundaries:
+                return
+
+            # Get current vehicle state
+            vehicle_location = self.vehicle.get_location()
+            vehicle_transform = self.vehicle.get_transform()
+            current_velocity = self.vehicle.get_velocity().length()
+            
+            # Calculate distance to lane boundaries
+            left_distance = abs(vehicle_location.x - lane_boundaries['left'])
+            right_distance = abs(vehicle_location.x - lane_boundaries['right'])
+            
+            # Calculate lane width
+            lane_width = abs(lane_boundaries['right'] - lane_boundaries['left'])
+            
+            # Calculate normalized position in lane (0 = left edge, 1 = right edge)
+            lane_position = (vehicle_location.x - lane_boundaries['left']) / lane_width
+            
+            # Calculate target speed based on lane position
+            # Slow down when too close to either edge
+            speed_factor = 1.0
+            if left_distance < 0.5 or right_distance < 0.5:
+                speed_factor = 0.5
+            elif left_distance < 1.0 or right_distance < 1.0:
+                speed_factor = 0.7
+            
+            # Calculate steering correction
+            target_position = 0.5  # Center of lane
+            position_error = lane_position - target_position
+            
+            # Apply stronger correction when near lane edges
+            if abs(position_error) > 0.4:
+                steer_correction = -position_error * 0.3
+            else:
+                steer_correction = -position_error * 0.1
+            
+            # Smooth steering changes
+            if hasattr(self, 'last_steer'):
+                self.last_steer = self.last_steer * 0.9 + steer_correction * 0.1
+            else:
+                self.last_steer = steer_correction
+            
+            # Apply bounds to steering
+            self.last_steer = max(-0.3, min(0.3, self.last_steer))
+            
+            # Print debug information
+            print(f"Lane control - Position: {lane_position:.3f}, Error: {position_error:.3f}, Steer: {self.last_steer:.3f}")
+            print(f"Speed factor: {speed_factor:.2f}, Current velocity: {current_velocity:.2f} m/s")
+            
+        except Exception as e:
+            print(f"Error in vehicle control update: {e}")
 
 if __name__ == "__main__":
     simulator = CarlaSimulator()
