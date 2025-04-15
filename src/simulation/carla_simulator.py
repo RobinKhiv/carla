@@ -480,7 +480,7 @@ class CarlaSimulator:
     def run(self):
         """Run the simulation."""
         try:
-            if not self.initialized:  # Only initialize if not already done
+            if not self.initialized:
                 if not self.initialize():
                     raise RuntimeError("Failed to initialize simulator")
                 self.initialized = True
@@ -493,56 +493,9 @@ class CarlaSimulator:
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
             
-            # Set up camera and sensors
+            # Set up camera
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
-            
-            # Initialize sensor manager if not already done
-            if not self.sensor_manager:
-                self.sensor_manager = SensorManager(self.world)
-                if not self.sensor_manager:
-                    raise RuntimeError("Failed to initialize sensor manager")
-            
-            # Initialize ML manager if not already done
-            if not self.ml_manager:
-                self.ml_manager = MLManager()
-                if not self.ml_manager:
-                    raise RuntimeError("Failed to initialize ML manager")
-            
-            # Initialize sensor data dictionary
-            self.sensor_manager.sensor_data = {}
-            
-            # Setup sensors with proper callback
-            def camera_callback(image):
-                """Callback for camera sensor data."""
-                try:
-                    # Convert image to numpy array
-                    array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
-                    array = np.reshape(array, (image.height, image.width, 4))
-                    array = array[:, :, :3]  # Remove alpha channel
-                    
-                    # Store the image data
-                    if not hasattr(self.sensor_manager, 'sensor_data'):
-                        self.sensor_manager.sensor_data = {}
-                    self.sensor_manager.sensor_data['camera'] = array
-                except Exception as e:
-                    print(f"Error in camera callback: {e}")
-            
-            # Setup camera sensor
-            camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
-            camera_bp.set_attribute('image_size_x', '800')
-            camera_bp.set_attribute('image_size_y', '600')
-            camera_bp.set_attribute('fov', '90')
-            
-            # Attach camera to vehicle
-            camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
-            camera = self.world.spawn_actor(camera_bp, camera_transform, attach_to=self.vehicle)
-            if camera is None:
-                raise RuntimeError("Failed to spawn camera sensor")
-            
-            # Register callback
-            camera.listen(camera_callback)
-            self.sensor_manager.sensors['camera'] = camera
             
             # Main simulation loop
             self.running = True
@@ -552,125 +505,70 @@ class CarlaSimulator:
                     # Tick the world
                     self.world.tick()
                     
-                    # Update camera position every frame
+                    # Update camera position
                     self.update_camera()
                     
-                    # Get sensor data
-                    if not self.sensor_manager:
-                        print("Warning: Sensor manager not initialized")
+                    # Get current waypoint
+                    current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
+                    if current_waypoint is None:
+                        print("Warning: Vehicle is not on road")
                         continue
                     
-                    if not hasattr(self.sensor_manager, 'sensor_data'):
-                        print("Warning: Sensor data not initialized")
-                        continue
+                    # Get next waypoint
+                    next_waypoint = current_waypoint.next(5.0)[0]  # Look 5 meters ahead
                     
-                    sensor_data = self.sensor_manager.sensor_data
-                    if not sensor_data:
-                        print("Warning: No sensor data available")
-                        continue
+                    # Calculate basic controls
+                    control = carla.VehicleControl()
                     
-                    if 'camera' not in sensor_data:
-                        print("Warning: No camera data available")
-                        continue
+                    # Get current velocity
+                    current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
                     
-                    # Process sensor data
-                    try:
-                        if not self.ml_manager:
-                            raise RuntimeError("ML manager not initialized")
-                        features = self.ml_manager.process_sensor_data(sensor_data)
-                    except Exception as e:
-                        print(f"Error processing sensor data: {e}")
-                        continue
+                    # Set target speed
+                    target_speed = 20.0  # km/h
                     
-                    # Make decision
-                    try:
-                        decision = self.ml_manager.make_decision(features)
-                        print(f"Decision: {decision}")  # Debug output
-                    except Exception as e:
-                        print(f"Error making decision: {e}")
-                        continue
+                    # Calculate throttle and brake
+                    if current_velocity < target_speed:
+                        control.throttle = 0.5
+                        control.brake = 0.0
+                    else:
+                        control.throttle = 0.0
+                        control.brake = 0.1
                     
-                    # Apply controls
-                    try:
-                        if not self.vehicle:
-                            raise RuntimeError("Vehicle not initialized")
-                        
-                        # Get current waypoint
-                        current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
-                        if current_waypoint is None:
-                            print("Warning: Vehicle is not on road")
-                            continue
-                        
-                        # Check for traffic lights
-                        traffic_light_state = self.check_traffic_light()
-                        if traffic_light_state == 'red' or traffic_light_state == 'yellow':
-                            print(f"Traffic light is {traffic_light_state}, stopping...")
-                            # Apply full brake
-                            control = carla.VehicleControl()
-                            control.throttle = 0.0
-                            control.brake = 1.0
-                            control.steer = 0.0
-                            self.vehicle.apply_control(control)
-                            continue
-                        
-                        # Get next waypoint with adjusted lookahead distance
-                        lookahead_distance = 10.0  # Reduced from 15.0 for more immediate response
-                        next_waypoint = current_waypoint.next(lookahead_distance)[0]
-                        
-                        # Calculate angle to waypoint
-                        waypoint_location = next_waypoint.transform.location
-                        waypoint_vector = np.array([waypoint_location.x - self.vehicle.get_location().x,
-                                                  waypoint_location.y - self.vehicle.get_location().y])
-                        vehicle_vector = np.array([np.cos(np.radians(self.vehicle.get_transform().rotation.yaw)),
-                                                 np.sin(np.radians(self.vehicle.get_transform().rotation.yaw))])
-                        
-                        # Normalize vectors and calculate angle
-                        waypoint_vector = waypoint_vector / np.linalg.norm(waypoint_vector)
-                        vehicle_vector = vehicle_vector / np.linalg.norm(vehicle_vector)
-                        angle = np.degrees(np.arccos(np.clip(np.dot(vehicle_vector, waypoint_vector), -1.0, 1.0)))
-                        
-                        # Determine turn direction
-                        cross_product = np.cross(vehicle_vector, waypoint_vector)
-                        turn_direction = -1.0 if cross_product < 0 else 1.0
-                        
-                        # Calculate steering with improved stability
-                        steer, current_velocity = self._calculate_steering(self.vehicle.get_transform(), next_waypoint, self.vehicle.get_velocity().length() * 3.6)
-                        
-                        # Calculate throttle and brake with improved stability
-                        throttle, brake = self._calculate_throttle_brake(current_velocity, 5.0, self.vehicle.get_transform(), next_waypoint)
-                        
-                        # Create and apply vehicle control
-                        control = carla.VehicleControl(
-                            throttle=float(throttle),
-                            brake=float(brake),
-                            steer=float(steer)
-                        )
-                        
-                        # Print control values for debugging
-                        print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
-                        print(f"Vehicle angle to waypoint: {angle} degrees")
-                        print(f"Current velocity: {current_velocity:.2f} km/h")
-                        print(f"Traffic light state: {traffic_light_state}")
-                        
-                        # Apply control to vehicle
-                        self.vehicle.apply_control(control)
-                        
-                        # Print vehicle state for debugging
-                        velocity = self.vehicle.get_velocity()
-                        print(f"Vehicle velocity: {velocity.length()} m/s")
-                        
-                        # Print vehicle transform for debugging
-                        transform = self.vehicle.get_transform()
-                        print(f"Vehicle position: {transform.location}")
-                        print(f"Vehicle rotation: {transform.rotation}")
-                        
-                        # Print waypoint information
-                        print(f"Current waypoint: {current_waypoint.transform.location}")
-                        print(f"Next waypoint: {next_waypoint.transform.location}")
-                        
-                    except Exception as e:
-                        print(f"Error applying controls: {e}")
-                        continue
+                    # Calculate steering
+                    vehicle_transform = self.vehicle.get_transform()
+                    vehicle_location = vehicle_transform.location
+                    waypoint_location = next_waypoint.transform.location
+                    
+                    # Calculate vector to waypoint
+                    waypoint_vector = carla.Location(
+                        waypoint_location.x - vehicle_location.x,
+                        waypoint_location.y - vehicle_location.y,
+                        0
+                    )
+                    
+                    # Calculate angle between vehicle's forward vector and waypoint vector
+                    vehicle_forward = vehicle_transform.get_forward_vector()
+                    angle = math.degrees(math.acos(
+                        (vehicle_forward.x * waypoint_vector.x + vehicle_forward.y * waypoint_vector.y) /
+                        (math.sqrt(vehicle_forward.x**2 + vehicle_forward.y**2) * 
+                         math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
+                    ))
+                    
+                    # Calculate cross product to determine direction
+                    cross = vehicle_forward.x * waypoint_vector.y - vehicle_forward.y * waypoint_vector.x
+                    if cross < 0:
+                        angle = -angle
+                    
+                    # Set steering based on angle
+                    control.steer = angle / 70.0  # 70 degrees is approximately the maximum steering angle
+                    
+                    # Apply control to vehicle
+                    self.vehicle.apply_control(control)
+                    
+                    # Print vehicle state
+                    print(f"Vehicle velocity: {current_velocity:.2f} km/h")
+                    print(f"Vehicle position: {vehicle_location}")
+                    print(f"Vehicle rotation: {vehicle_transform.rotation}")
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
