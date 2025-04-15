@@ -628,15 +628,15 @@ class CarlaSimulator:
                         turn_direction = -1.0 if cross_product < 0 else 1.0
                         
                         # Calculate steering with improved stability
-                        max_steer = 0.25  # Increased from 0.2 for better turn response
-                        angle_factor = min(1.0, angle / 20.0)  # Reduced from 25.0 for earlier intervention
+                        max_steer = 0.2  # Reduced from 0.3 for more controlled turns
+                        angle_factor = min(1.0, angle / 20.0)  # Increased from 15.0 for more gradual response
                         base_steer = turn_direction * angle_factor * max_steer
                         
                         # Add road curvature influence with reduced weight
                         road_curvature = 0.0
                         try:
                             # Get multiple waypoints ahead with increased distance
-                            next_waypoints = current_waypoint.next(30.0)  # Reduced from 40.0 for more immediate response
+                            next_waypoints = current_waypoint.next(25.0)  # Increased from 20.0 for better anticipation
                             if len(next_waypoints) > 1:
                                 # Calculate average curvature with weighted smoothing
                                 total_curvature = 0.0
@@ -649,13 +649,13 @@ class CarlaSimulator:
                                     total_curvature += turn_vector.z * weight
                                     total_weight += weight
                                 road_curvature = total_curvature / total_weight
-                                road_curvature = max(-0.3, min(0.3, road_curvature * 0.15))  # Reduced sensitivity
+                                road_curvature = max(-0.2, min(0.2, road_curvature * 0.15))  # Reduced sensitivity
                         except Exception as e:
                             print(f"Error calculating road curvature: {e}")
                         
                         # Apply stronger smoothing to steering
                         if hasattr(self, 'last_steer'):
-                            base_steer = self.last_steer * 0.9 + base_steer * 0.1  # Reduced smoothing for more responsive steering
+                            base_steer = self.last_steer * 0.85 + base_steer * 0.15  # Increased smoothing for more stable steering
                         self.last_steer = base_steer
                         
                         # Add lane keeping behavior with improved stability
@@ -665,51 +665,51 @@ class CarlaSimulator:
                             if current_waypoint:
                                 lane_center = current_waypoint.transform.location
                                 lane_center_offset = (self.vehicle.get_location().x - lane_center.x) / 3.0
-                                base_steer += lane_center_offset * 0.003  # Increased from 0.002 for better lane keeping
+                                base_steer += lane_center_offset * 0.003  # Reduced from 0.004 for more gradual lane keeping
                         except Exception as e:
                             print(f"Error calculating lane center: {e}")
                         
                         # Improved recovery behavior for high angle deviations
-                        if angle > 15.0:  # Reduced from 20.0 degrees for earlier intervention
+                        if angle > 15.0:  # Increased from 10.0 degrees for later intervention
                             # Reduce speed more gradually
-                            speed_factor = 0.9  # Increased from 0.95
-                            # Apply more aggressive steering correction
-                            recovery_steer = turn_direction * 0.3  # Increased from 0.2
+                            speed_factor = 0.85  # Increased from 0.8
+                            # Apply more gradual steering correction
+                            recovery_steer = turn_direction * 0.3  # Reduced from 0.4
                             # Add a smaller random component to break out of oscillation
-                            recovery_steer += random.uniform(-0.003, 0.003)  # Increased from -0.002/0.002
-                            # Smoothly transition to recovery steering
-                            base_steer = base_steer * 0.5 + recovery_steer * 0.5  # More aggressive recovery
+                            recovery_steer += random.uniform(-0.001, 0.001)  # Reduced from 0.002
+                            # More gradual transition to recovery steering
+                            base_steer = base_steer * 0.5 + recovery_steer * 0.5  # More balanced recovery
                             print("High angle detected - applying recovery behavior")
                         
                         # Calculate speed with improved responsiveness
-                        target_speed = 15.0  # Reduced base target speed from 25.0 km/h
+                        target_speed = 10.0  # Reduced base target speed from 15.0 km/h
                         
                         # Adjust speed based on angle with improved sensitivity
-                        angle_speed_factor = 1.0 - (angle / 30.0)  # Reduced from 40.0 for earlier speed reduction
+                        angle_speed_factor = 1.0 - (angle / 20.0)  # Reduced from 30.0 for earlier speed reduction
                         target_speed *= angle_speed_factor
                         
                         # Adjust speed based on road curvature with improved response
-                        if abs(road_curvature) > 0.05:  # Reduced threshold from 0.1
-                            target_speed *= (1.0 - abs(road_curvature) * 4.0)  # Increased sensitivity
+                        if abs(road_curvature) > 0.03:  # Reduced threshold from 0.05
+                            target_speed *= (1.0 - abs(road_curvature) * 5.0)  # Increased sensitivity
                         
                         # Ensure minimum speed for stability
-                        target_speed = max(5.0, target_speed)  # Reduced from 8.0
+                        target_speed = max(3.0, target_speed)  # Reduced from 5.0
                         
                         # Calculate throttle and brake with improved response
                         current_speed = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
                         speed_diff = target_speed - current_speed
                         
                         # More conservative acceleration when far from target speed
-                        if speed_diff > 2.0:  # Reduced from 3.0
-                            throttle = min(0.5, speed_diff / 10.0)  # Reduced from 1.0 and increased denominator
+                        if speed_diff > 1.5:  # Reduced from 2.0
+                            throttle = min(0.3, speed_diff / 15.0)  # Reduced from 0.5 and increased denominator
                             brake = 0.0
                         # More responsive braking when overspeeding
-                        elif speed_diff < -2.0:  # Reduced from -3.0
+                        elif speed_diff < -1.5:  # Reduced from -2.0
                             throttle = 0.0
-                            brake = min(0.5, abs(speed_diff) / 10.0)  # Reduced from 1.0 and increased denominator
+                            brake = min(0.3, abs(speed_diff) / 15.0)  # Reduced from 0.5 and increased denominator
                         else:
                             # Maintain current speed with finer control
-                            throttle = 0.1  # Reduced from 0.15
+                            throttle = 0.05  # Reduced from 0.1
                             brake = 0.0
                         
                         # Apply speed factor from recovery behavior
