@@ -2,6 +2,7 @@ import numpy as np
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.linear_model import LinearRegression
 from typing import List, Tuple
+import math
 
 class ObstacleAvoidance:
     def __init__(self):
@@ -25,29 +26,35 @@ class ObstacleAvoidance:
         y_brake = []
         y_steer = []
         
-        # Case 1: Low speed
+        # Case 1: Low speed, straight
         X.append([0.2, 1.0, 0.0, 0.0, 0.0])  # low speed, no obstacles
         y_throttle.append(0.5)  # accelerate
         y_brake.append(0.0)     # no brake
         y_steer.append(0.0)     # go straight
         
-        # Case 2: Medium speed
+        # Case 2: Medium speed, straight
         X.append([0.5, 1.0, 0.0, 0.0, 0.0])  # medium speed, no obstacles
         y_throttle.append(0.3)  # maintain speed
         y_brake.append(0.0)     # no brake
         y_steer.append(0.0)     # go straight
         
-        # Case 3: High speed
+        # Case 3: High speed, straight
         X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, no obstacles
         y_throttle.append(0.1)  # reduce speed
         y_brake.append(0.0)     # no brake
         y_steer.append(0.0)     # go straight
         
-        # Case 4: Very high speed
-        X.append([1.0, 1.0, 0.0, 0.0, 0.0])  # very high speed, no obstacles
-        y_throttle.append(0.0)  # no throttle
-        y_brake.append(0.2)     # light brake
-        y_steer.append(0.0)     # go straight
+        # Case 4: Low speed, turn
+        X.append([0.2, 1.0, 0.3, 0.0, 0.0])  # low speed, turning
+        y_throttle.append(0.3)  # maintain lower speed
+        y_brake.append(0.0)     # no brake
+        y_steer.append(0.3)     # turn
+        
+        # Case 5: High speed, turn
+        X.append([0.8, 1.0, 0.3, 0.0, 0.0])  # high speed, turning
+        y_throttle.append(0.0)  # reduce speed
+        y_brake.append(0.1)     # light brake
+        y_steer.append(0.3)     # turn
         
         # Convert to numpy arrays
         X = np.array(X)
@@ -68,7 +75,8 @@ class ObstacleAvoidance:
                         vehicle_location: np.ndarray,
                         vehicle_velocity: float,
                         vehicle_rotation: np.ndarray,
-                        obstacles: List[Tuple[np.ndarray, float, str]]) -> np.ndarray:
+                        obstacles: List[Tuple[np.ndarray, float, str]],
+                        next_waypoint: np.ndarray = None) -> np.ndarray:
         """
         Preprocess input data for the models.
         
@@ -77,6 +85,7 @@ class ObstacleAvoidance:
             vehicle_velocity: Current vehicle velocity
             vehicle_rotation: Current vehicle rotation (pitch, yaw, roll)
             obstacles: List of tuples containing (location, distance, type) for each obstacle
+            next_waypoint: Next waypoint location (x, y, z)
             
         Returns:
             np.ndarray: Preprocessed input features
@@ -84,12 +93,31 @@ class ObstacleAvoidance:
         # Normalize vehicle velocity (assuming max speed of 50 km/h)
         normalized_velocity = vehicle_velocity / 50.0
         
-        # For now, ignore obstacles and just focus on speed control
-        # Create input features with just velocity
+        # Calculate angle to next waypoint if available
+        angle_to_waypoint = 0.0
+        if next_waypoint is not None:
+            # Calculate vector to waypoint
+            waypoint_vector = next_waypoint - vehicle_location
+            waypoint_vector = waypoint_vector / np.linalg.norm(waypoint_vector) if np.linalg.norm(waypoint_vector) > 0 else np.zeros(3)
+            
+            # Calculate vehicle forward vector
+            yaw_rad = math.radians(vehicle_rotation[1])  # yaw is the second element
+            vehicle_forward = np.array([math.cos(yaw_rad), math.sin(yaw_rad), 0])
+            
+            # Calculate angle between vehicle forward and waypoint vector
+            dot_product = np.dot(vehicle_forward[:2], waypoint_vector[:2])
+            angle_to_waypoint = math.acos(np.clip(dot_product, -1.0, 1.0))
+            
+            # Determine turn direction
+            cross_product = np.cross(vehicle_forward[:2], waypoint_vector[:2])
+            if cross_product < 0:
+                angle_to_waypoint = -angle_to_waypoint
+        
+        # Create input features
         features = np.array([
             normalized_velocity,
             1.0,  # default distance (no obstacles)
-            0.0,  # default x position
+            angle_to_waypoint,  # angle to next waypoint
             0.0,  # default y position
             0.0   # default z position
         ])
@@ -100,7 +128,8 @@ class ObstacleAvoidance:
                        vehicle_location: np.ndarray,
                        vehicle_velocity: float,
                        vehicle_rotation: np.ndarray,
-                       obstacles: List[Tuple[np.ndarray, float, str]]) -> Tuple[float, float, float]:
+                       obstacles: List[Tuple[np.ndarray, float, str]],
+                       next_waypoint: np.ndarray = None) -> Tuple[float, float, float]:
         """
         Predict control actions based on current state.
         
@@ -109,17 +138,18 @@ class ObstacleAvoidance:
             vehicle_velocity: Current vehicle velocity
             vehicle_rotation: Current vehicle rotation (pitch, yaw, roll)
             obstacles: List of tuples containing (location, distance, type) for each obstacle
+            next_waypoint: Next waypoint location (x, y, z)
             
         Returns:
             Tuple[float, float, float]: Predicted throttle, brake, and steering values
         """
         # Preprocess input
-        features = self.preprocess_input(vehicle_location, vehicle_velocity, vehicle_rotation, obstacles)
+        features = self.preprocess_input(vehicle_location, vehicle_velocity, vehicle_rotation, obstacles, next_waypoint)
         
         # Make predictions
         throttle = self.throttle_model.predict([features])[0]
         brake = self.brake_model.predict([features])[0]
-        steer = 0.0  # Always go straight for now
+        steer = self.steer_model.predict([features])[0]
         
         # Clip values to valid ranges
         throttle = np.clip(throttle, 0.0, 1.0)
@@ -133,7 +163,8 @@ class ObstacleAvoidance:
                     vehicle_velocity: float,
                     vehicle_rotation: np.ndarray,
                     obstacles: List[Tuple[np.ndarray, float, str]],
-                    target_controls: Tuple[float, float, float]):
+                    target_controls: Tuple[float, float, float],
+                    next_waypoint: np.ndarray = None):
         """
         Update the models based on new experience.
         
@@ -143,9 +174,10 @@ class ObstacleAvoidance:
             vehicle_rotation: Current vehicle rotation (pitch, yaw, roll)
             obstacles: List of tuples containing (location, distance, type) for each obstacle
             target_controls: Target control values (throttle, brake, steer)
+            next_waypoint: Next waypoint location (x, y, z)
         """
         # Preprocess input
-        features = self.preprocess_input(vehicle_location, vehicle_velocity, vehicle_rotation, obstacles)
+        features = self.preprocess_input(vehicle_location, vehicle_velocity, vehicle_rotation, obstacles, next_waypoint)
         
         # Add experience to buffer
         self.experience_buffer.append((features, target_controls))

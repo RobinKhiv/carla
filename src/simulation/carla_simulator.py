@@ -371,6 +371,13 @@ class CarlaSimulator:
                         self.vehicle.get_transform().rotation.roll
                     ])
                     
+                    # Get next waypoint location
+                    next_waypoint_location = np.array([
+                        next_waypoint.transform.location.x,
+                        next_waypoint.transform.location.y,
+                        next_waypoint.transform.location.z
+                    ])
+                    
                     # Detect obstacles
                     obstacles = self.detect_obstacles()
                     
@@ -379,7 +386,8 @@ class CarlaSimulator:
                         vehicle_location,
                         vehicle_velocity,
                         vehicle_rotation,
-                        obstacles
+                        obstacles,
+                        next_waypoint_location
                     )
                     
                     # Create control command
@@ -396,6 +404,7 @@ class CarlaSimulator:
                     print(f"Vehicle position: {vehicle_location}")
                     print(f"Vehicle rotation: {vehicle_rotation}")
                     print(f"Number of obstacles detected: {len(obstacles)}")
+                    print(f"Steering angle: {steer:.2f}")
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
