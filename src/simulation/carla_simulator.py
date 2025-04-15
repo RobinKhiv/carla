@@ -316,10 +316,29 @@ class CarlaSimulator:
         """Run the simulation."""
         try:
             # Initialize the simulation
-            self.initialize_simulation()
-            
+            if not self.initialize():
+                print("Failed to initialize simulation")
+                return
+
+            # Spawn the vehicle
+            if not self.spawn_vehicle():
+                print("Failed to spawn vehicle")
+                return
+
+            # Spawn regular traffic
+            self.spawn_pedestrians(10)
+            self.spawn_other_vehicles(10)
+
+            # Create special scenarios
+            self.create_trolley_scenario()
+            self.create_hazard_scenario()
+
+            # Set up camera
+            self.setup_camera()
+            self.running = True
+
             # Main simulation loop
-            while True:
+            while self.running:
                 # Get sensor data
                 sensor_data = self.sensor_manager.get_sensor_data()
                 
@@ -351,6 +370,9 @@ class CarlaSimulator:
                     controls['throttle'] = 0.0
                     controls['brake'] = 1.0
                     self.apply_decision(ethical_decision)
+                
+                # Update camera
+                self.update_camera()
                 
                 # Update simulation state
                 self.world.tick()
