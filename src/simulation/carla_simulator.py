@@ -61,7 +61,7 @@ class CarlaSimulator:
             # Get spawn points
             spawn_points = []
             max_attempts = 100  # Maximum attempts to find valid spawn points
-            min_distance = 40.0  # Increased minimum distance between pedestrians
+            min_distance = 50.0  # Increased minimum distance between pedestrians
             
             for _ in range(max_attempts):
                 spawn_point = carla.Transform()
@@ -86,16 +86,18 @@ class CarlaSimulator:
                 walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
                 if walker is not None:
                     self.pedestrians.append(walker)
-            
-            # Spawn walker controllers
-            walker_controller_bp = self.world.get_blueprint_library().find('controller.ai.walker')
-            for walker in self.pedestrians:
-                controller = self.world.spawn_actor(walker_controller_bp, carla.Transform(), walker)
-                if controller is not None:
-                    self.walker_controllers.append(controller)
-                    controller.start()
-                    controller.go_to_location(self.world.get_random_location_from_navigation())
-                    controller.set_max_speed(1.4)  # Walking speed
+                    # Add AI controller for the pedestrian
+                    controller = self.world.spawn_actor(
+                        self.world.get_blueprint_library().find('controller.ai.walker'),
+                        carla.Transform(),
+                        walker
+                    )
+                    if controller is not None:
+                        self.walker_controllers.append(controller)
+                        controller.start()
+                        # Make pedestrian walk
+                        controller.go_to_location(self.world.get_random_location_from_navigation())
+                        controller.set_max_speed(1.4)  # Walking speed
             
             print(f"Spawned {len(self.pedestrians)} pedestrians")
         except Exception as e:
@@ -229,15 +231,15 @@ class CarlaSimulator:
             for i in range(5):
                 # Position pedestrians in a line with spacing
                 pedestrian_location = carla.Location(
-                    x=road_location.x + i * 25.0,  # Increased spacing to 25 meters
-                    y=road_location.y + 50.0,     # Increased distance ahead to 50 meters
+                    x=road_location.x + i * 30.0,  # Increased spacing to 30 meters
+                    y=road_location.y + 60.0,     # Increased distance ahead to 60 meters
                     z=road_location.z
                 )
                 
                 # Check for collisions before spawning
                 collision = False
                 for actor in self.world.get_actors():
-                    if actor.get_location().distance(pedestrian_location) < 25.0:  # Increased collision check distance
+                    if actor.get_location().distance(pedestrian_location) < 30.0:  # Increased collision check distance
                         collision = True
                         break
                 
@@ -252,6 +254,23 @@ class CarlaSimulator:
                     walker = self.world.spawn_actor(random.choice(walker_bp), pedestrian_transform)
                     if walker is not None:
                         self.pedestrians.append(walker)
+                        # Add AI controller for the pedestrian
+                        controller = self.world.spawn_actor(
+                            self.world.get_blueprint_library().find('controller.ai.walker'),
+                            carla.Transform(),
+                            walker
+                        )
+                        if controller is not None:
+                            self.walker_controllers.append(controller)
+                            controller.start()
+                            # Make pedestrian walk across the road
+                            target_location = carla.Location(
+                                x=pedestrian_location.x,
+                                y=pedestrian_location.y + 30.0,  # Walk 30 meters across
+                                z=pedestrian_location.z
+                            )
+                            controller.go_to_location(target_location)
+                            controller.set_max_speed(1.4)  # Walking speed
             
             print("Created trolley problem scenario with pedestrians crossing the road")
         except Exception as e:
@@ -266,7 +285,7 @@ class CarlaSimulator:
             # Create a broken-down vehicle scenario
             spawn_point = self.vehicle.get_transform()
             hazard_location = carla.Location(
-                x=spawn_point.location.x + 400.0,  # Increased distance to 400 meters
+                x=spawn_point.location.x + 500.0,  # Increased distance to 500 meters
                 y=spawn_point.location.y,
                 z=spawn_point.location.z
             )
@@ -274,7 +293,7 @@ class CarlaSimulator:
             # Check for collisions before spawning
             collision = False
             for actor in self.world.get_actors():
-                if actor.get_location().distance(hazard_location) < 30.0:  # Increased collision check distance
+                if actor.get_location().distance(hazard_location) < 50.0:  # Increased collision check distance
                     collision = True
                     break
             
@@ -286,54 +305,90 @@ class CarlaSimulator:
                 )
                 if hazard_vehicle is not None:
                     self.other_vehicles.append(hazard_vehicle)
+                    # Set vehicle to be stationary
+                    hazard_vehicle.set_simulate_physics(False)
             
             print("Created hazard scenario with broken-down vehicle")
         except Exception as e:
             print(f"Error creating hazard scenario: {e}")
 
     def run(self):
-        """Run the main simulation loop."""
-        if not self.initialize():
-            return
-
-        if not self.spawn_vehicle():
-            return
-
-        # Spawn regular traffic
-        self.spawn_pedestrians(10)
-        self.spawn_other_vehicles(10)
-
-        # Create special scenarios
-        self.create_trolley_scenario()
-        self.create_hazard_scenario()
-
-        self.setup_camera()
-        self.running = True
-
+        """Run the simulation."""
         try:
-            while self.running:
+            # Initialize the simulation
+            self.initialize_simulation()
+            
+            # Main simulation loop
+            while True:
                 # Get sensor data
                 sensor_data = self.sensor_manager.get_sensor_data()
                 
-                # Make decisions based on sensor data and ethical considerations
-                decision = self.decision_maker.make_decision(sensor_data)
+                # Process sensor data
+                processed_features = self.ml_manager.process_sensor_data(sensor_data)
                 
-                # Apply ethical constraints
+                # Make decision
+                decision = self.ml_manager.make_decision(processed_features)
+                
+                # Evaluate ethical considerations
                 ethical_decision = self.ethical_engine.evaluate_decision(decision, sensor_data)
                 
-                # Apply the decision to the vehicle
-                self.apply_decision(ethical_decision)
+                # Check traffic light state
+                traffic_light_state = self.check_traffic_light()
                 
-                # Update camera
-                self.update_camera()
+                # Apply decision with traffic light consideration
+                if traffic_light_state == 'green':
+                    # Apply the decision normally
+                    self.apply_decision(ethical_decision)
+                elif traffic_light_state == 'yellow':
+                    # Reduce speed when approaching yellow light
+                    controls = ethical_decision.get('controls', {})
+                    controls['throttle'] *= 0.5
+                    controls['brake'] = max(controls.get('brake', 0.0), 0.3)
+                    self.apply_decision(ethical_decision)
+                else:  # red
+                    # Stop at red light
+                    controls = ethical_decision.get('controls', {})
+                    controls['throttle'] = 0.0
+                    controls['brake'] = 1.0
+                    self.apply_decision(ethical_decision)
                 
-                # Sleep to maintain real-time simulation
-                time.sleep(0.1)
-
-        except KeyboardInterrupt:
-            print("\nSimulation stopped by user")
+                # Update simulation state
+                self.world.tick()
+                
+        except Exception as e:
+            print(f"Error in simulation: {e}")
         finally:
             self.cleanup()
+
+    def check_traffic_light(self) -> str:
+        """Check the state of the traffic light ahead."""
+        if not self.vehicle:
+            return 'unknown'
+        
+        # Get the vehicle's location
+        vehicle_location = self.vehicle.get_location()
+        
+        # Find the nearest traffic light
+        traffic_light = None
+        min_distance = float('inf')
+        
+        for actor in self.world.get_actors():
+            if actor.type_id.startswith('traffic.traffic_light'):
+                distance = actor.get_location().distance(vehicle_location)
+                if distance < min_distance:
+                    min_distance = distance
+                    traffic_light = actor
+        
+        if traffic_light and min_distance < 50.0:  # Only consider traffic lights within 50 meters
+            state = traffic_light.get_state()
+            if state == carla.TrafficLightState.Green:
+                return 'green'
+            elif state == carla.TrafficLightState.Yellow:
+                return 'yellow'
+            else:
+                return 'red'
+        
+        return 'unknown'
 
     def apply_decision(self, decision: Dict[str, Any]):
         """Apply the decision to the vehicle."""
