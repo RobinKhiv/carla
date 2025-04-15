@@ -513,10 +513,37 @@ class CarlaSimulator:
                     # Get current velocity
                     current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
                     
-                    # Check for traffic lights using traffic manager
-                    traffic_light = self.traffic_manager.get_next_traffic_light(self.vehicle)
-                    if traffic_light:
-                        state = traffic_light.get_state()
+                    # Check for traffic lights
+                    vehicle_location = self.vehicle.get_location()
+                    vehicle_transform = self.vehicle.get_transform()
+                    
+                    # Get all traffic lights in the world
+                    traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
+                    
+                    # Find the nearest traffic light in front of the vehicle
+                    nearest_light = None
+                    min_distance = float('inf')
+                    
+                    for light in traffic_lights:
+                        # Get traffic light location
+                        light_location = light.get_location()
+                        
+                        # Calculate distance to traffic light
+                        distance = vehicle_location.distance(light_location)
+                        
+                        # Check if traffic light is in front of the vehicle
+                        vehicle_forward = vehicle_transform.get_forward_vector()
+                        light_direction = light_location - vehicle_location
+                        light_direction = light_direction.make_unit_vector()
+                        
+                        if vehicle_forward.dot(light_direction) > 0.5 and distance < 30.0:  # Only consider lights within 30 meters in front
+                            if distance < min_distance:
+                                min_distance = distance
+                                nearest_light = light
+                    
+                    # If we found a traffic light, check its state
+                    if nearest_light and min_distance < 10.0:  # Only consider lights within 10 meters
+                        state = nearest_light.get_state()
                         if state == carla.TrafficLightState.Red or state == carla.TrafficLightState.Yellow:
                             print(f"Traffic light is {state}, stopping...")
                             control.throttle = 0.0
