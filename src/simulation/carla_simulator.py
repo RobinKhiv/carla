@@ -683,7 +683,7 @@ class CarlaSimulator:
             self.cleanup()
 
     def check_traffic_light(self):
-        """Check the state of the traffic light ahead using CARLA's traffic manager."""
+        """Check the state of the traffic light ahead using CARLA's waypoint system."""
         if not self.vehicle:
             return 'unknown'
         
@@ -694,12 +694,38 @@ class CarlaSimulator:
         if not vehicle_waypoint:
             return 'unknown'
         
-        # Get the next traffic light using traffic manager
-        traffic_light = self.traffic_manager.get_next_traffic_light(self.vehicle)
+        # Get all traffic lights in the world
+        traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
         
-        if traffic_light:
+        # Find the nearest traffic light in front of the vehicle
+        nearest_light = None
+        min_distance = float('inf')
+        
+        for light in traffic_lights:
+            # Get traffic light location
+            light_location = light.get_location()
+            
+            # Get the waypoint at the traffic light
+            light_waypoint = self.world.get_map().get_waypoint(light_location)
+            
+            # Check if the traffic light is in the same lane as the vehicle
+            if light_waypoint and light_waypoint.lane_id == vehicle_waypoint.lane_id:
+                # Calculate distance to traffic light
+                distance = vehicle_location.distance(light_location)
+                
+                # Check if traffic light is in front of the vehicle
+                vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                light_direction = light_location - vehicle_location
+                light_direction = light_direction.make_unit_vector()
+                
+                if vehicle_forward.dot(light_direction) > 0.5 and distance < 30.0:  # Reduced from 50.0 to 30.0 meters
+                    if distance < min_distance:
+                        min_distance = distance
+                        nearest_light = light
+        
+        if nearest_light and min_distance < 10.0:  # Reduced from 30.0 to 10.0 meters
             # Get the state of the traffic light
-            state = traffic_light.get_state()
+            state = nearest_light.get_state()
             if state == carla.TrafficLightState.Green:
                 return 'green'
             elif state == carla.TrafficLightState.Yellow:
