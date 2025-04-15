@@ -90,6 +90,9 @@ class MLManager:
             
             # Convert to tensor and ensure correct shape
             if isinstance(camera_data, np.ndarray):
+                # Create a writable copy of the array
+                camera_data = np.copy(camera_data)
+                
                 # Ensure the array is in the correct format (H, W, C)
                 if len(camera_data.shape) == 3:
                     # If channels are first, transpose to (H, W, C)
