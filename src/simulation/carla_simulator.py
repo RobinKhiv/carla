@@ -678,7 +678,7 @@ class CarlaSimulator:
         finally:
             self.cleanup()
 
-    def check_traffic_light(self) -> str:
+    def check_traffic_light(self):
         """Check the state of the traffic light ahead."""
         if not self.vehicle:
             return 'unknown'
@@ -1135,6 +1135,9 @@ class CarlaSimulator:
 
     def _calculate_throttle_brake(self, current_velocity, target_velocity, vehicle_transform, next_waypoint):
         """Calculate throttle and brake with improved stability."""
+        # Start with a lower target velocity (20 km/h)
+        target_velocity = 20.0  # Reduced from default target velocity
+        
         # Calculate speed difference
         speed_diff = target_velocity - current_velocity
         
@@ -1157,28 +1160,28 @@ class CarlaSimulator:
              math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
         ))
         
-        # Simplified speed control based on angle
+        # More gradual speed reduction based on angle
         if abs(angle) > 30.0:
-            target_velocity *= 0.8  # Reduce speed for sharp turns
+            target_velocity *= 0.7  # Reduce speed more for sharp turns
         elif abs(angle) > 15.0:
-            target_velocity *= 0.9  # Slight reduction for moderate turns
+            target_velocity *= 0.85  # Moderate reduction for turns
         
-        # Calculate throttle and brake with simplified logic
+        # Calculate throttle and brake with more conservative values
         if speed_diff > 0:
-            # Accelerate more aggressively
-            throttle = min(0.7, speed_diff / target_velocity)
+            # More gradual acceleration
+            throttle = min(0.4, speed_diff / target_velocity)  # Reduced from 0.7
             brake = 0.0
         else:
-            # Only apply minimal brake when significantly over target speed
+            # More aggressive braking to maintain lower speed
             throttle = 0.0
-            brake = min(0.02, abs(speed_diff) / target_velocity)  # Reduced brake to minimum
+            brake = min(0.3, abs(speed_diff) / target_velocity)  # Increased from 0.02
         
-        # Apply minimal smoothing to throttle and brake
+        # Apply more smoothing to throttle and brake for smoother transitions
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.7  # Reduced smoothing for more responsive control
+            smoothing_factor = 0.9  # Increased from 0.7 for smoother acceleration
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.7  # Reduced smoothing
+            smoothing_factor = 0.9  # Increased from 0.7
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
         
         self.last_throttle = throttle
