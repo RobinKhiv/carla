@@ -248,10 +248,19 @@ class CarlaSimulator:
             vehicle_transform = self.vehicle.get_transform()
             
             # Calculate camera position (behind and above the vehicle)
-            camera_location = carla.Location(
-                x=vehicle_transform.location.x - 10.0,
-                y=vehicle_transform.location.y,
-                z=vehicle_transform.location.z + 5.0
+            # Get vehicle's forward vector
+            yaw = math.radians(vehicle_transform.rotation.yaw)
+            forward_vector = carla.Location(
+                x=math.cos(yaw),
+                y=math.sin(yaw),
+                z=0
+            )
+            
+            # Calculate camera position (behind and above the vehicle)
+            camera_location = vehicle_transform.location + carla.Location(
+                x=-10.0 * forward_vector.x,
+                y=-10.0 * forward_vector.y,
+                z=5.0
             )
             
             # Set camera rotation to look at vehicle
@@ -278,13 +287,22 @@ class CarlaSimulator:
             vehicle_transform = self.vehicle.get_transform()
             
             # Calculate camera position (behind and above the vehicle)
-            camera_location = carla.Location(
-                x=vehicle_transform.location.x - 10.0,
-                y=vehicle_transform.location.y,
-                z=vehicle_transform.location.z + 5.0
+            # Get vehicle's forward vector
+            yaw = math.radians(vehicle_transform.rotation.yaw)
+            forward_vector = carla.Location(
+                x=math.cos(yaw),
+                y=math.sin(yaw),
+                z=0
             )
             
-            # Set camera rotation to look at vehicle
+            # Calculate camera position (behind and above the vehicle)
+            camera_location = vehicle_transform.location + carla.Location(
+                x=-10.0 * forward_vector.x,
+                y=-10.0 * forward_vector.y,
+                z=5.0
+            )
+            
+            # Calculate camera rotation to look at vehicle
             camera_rotation = carla.Rotation(
                 pitch=-20.0,
                 yaw=vehicle_transform.rotation.yaw
