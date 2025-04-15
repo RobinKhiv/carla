@@ -186,9 +186,13 @@ class ObstacleAvoidance:
         batch_size = min(32, len(self.experience_buffer))
         batch = random.sample(self.experience_buffer, batch_size)
         
-        # Prepare batch data
-        X = torch.FloatTensor([exp[0] for exp in batch])
-        y = torch.FloatTensor([exp[1] for exp in batch])
+        # Convert batch to numpy arrays
+        X_batch = np.array([exp[0] for exp in batch])
+        y_batch = np.array([exp[1] for exp in batch])
+        
+        # Convert to tensors
+        X = torch.FloatTensor(X_batch)
+        y = torch.FloatTensor(y_batch)
         
         # Update model
         self.optimizer.zero_grad()
