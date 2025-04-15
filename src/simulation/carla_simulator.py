@@ -352,22 +352,41 @@ class CarlaSimulator:
                     
                     # Get sensor data
                     sensor_data = self.sensor_manager.get_sensor_data()
+                    if not sensor_data or 'camera' not in sensor_data:
+                        print("Warning: No camera data available")
+                        continue
                     
                     # Process sensor data
-                    features = self.ml_manager.process_sensor_data(sensor_data)
+                    try:
+                        features = self.ml_manager.process_sensor_data(sensor_data)
+                    except Exception as e:
+                        print(f"Error processing sensor data: {e}")
+                        continue
                     
                     # Make decision
-                    decision = self.ml_manager.make_decision(features)
+                    try:
+                        decision = self.ml_manager.make_decision(features)
+                    except Exception as e:
+                        print(f"Error making decision: {e}")
+                        continue
                     
                     # Apply controls
-                    self.vehicle.apply_control(carla.VehicleControl(
-                        throttle=decision['throttle'],
-                        brake=decision['brake'],
-                        steer=decision['steer']
-                    ))
+                    try:
+                        self.vehicle.apply_control(carla.VehicleControl(
+                            throttle=float(decision.get('throttle', 0.0)),
+                            brake=float(decision.get('brake', 0.0)),
+                            steer=float(decision.get('steer', 0.0))
+                        ))
+                    except Exception as e:
+                        print(f"Error applying controls: {e}")
+                        continue
                     
                     # Update camera
-                    self.update_camera()
+                    try:
+                        self.update_camera()
+                    except Exception as e:
+                        print(f"Error updating camera: {e}")
+                        continue
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
