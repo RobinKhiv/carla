@@ -1093,8 +1093,8 @@ class CarlaSimulator:
         
         # Calculate vector to next waypoint
         waypoint_vector = carla.Location(
-            next_waypoint.x - vehicle_location.x,
-            next_waypoint.y - vehicle_location.y,
+            next_waypoint.transform.location.x - vehicle_location.x,
+            next_waypoint.transform.location.y - vehicle_location.y,
             0
         )
         
@@ -1144,8 +1144,8 @@ class CarlaSimulator:
         
         # Calculate vector to next waypoint
         waypoint_vector = carla.Location(
-            next_waypoint.x - vehicle_location.x,
-            next_waypoint.y - vehicle_location.y,
+            next_waypoint.transform.location.x - vehicle_location.x,
+            next_waypoint.transform.location.y - vehicle_location.y,
             0
         )
         
