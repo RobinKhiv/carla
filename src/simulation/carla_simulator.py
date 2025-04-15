@@ -628,7 +628,7 @@ class CarlaSimulator:
                         turn_direction = -1.0 if cross_product < 0 else 1.0
                         
                         # Calculate steering with improved stability
-                        max_steer = 0.08  # Increased from 0.05 for better control
+                        max_steer = 0.15  # Increased from 0.08 for better control at high angles
                         angle_factor = min(1.0, angle / 30.0)  # Reduced from 15.0 for smoother response
                         base_steer = turn_direction * angle_factor * max_steer
                         
@@ -669,7 +669,23 @@ class CarlaSimulator:
                         except Exception as e:
                             print(f"Error calculating lane center: {e}")
                         
-                        # Check for obstacles with improved detection
+                        # Improved recovery behavior for high angle deviations
+                        if angle > 45.0:  # Reduced from 60.0 degrees
+                            # Reduce speed more gradually
+                            speed_factor = 0.9  # Increased from 0.8
+                            # Apply stronger steering correction with dynamic adjustment
+                            recovery_steer = turn_direction * 0.15  # Increased from 0.1
+                            # Add a smaller random component to break out of oscillation
+                            recovery_steer += random.uniform(-0.003, 0.003)  # Reduced from -0.005/0.005
+                            # Smoothly transition to recovery steering
+                            base_steer = base_steer * 0.7 + recovery_steer * 0.3
+                            print("High angle detected - applying recovery behavior")
+                        
+                        # Calculate speed with improved stability
+                        max_speed = 3.0  # Reduced from 3.5 m/s
+                        speed_factor = 1.0 - abs(road_curvature)
+                        
+                        # If there's an obstacle, reduce speed more gradually
                         obstacle_detected = False
                         obstacle_distance = 15.0  # Reduced from 20.0 meters for earlier detection
                         obstacle_steering = 0.0
@@ -711,41 +727,7 @@ class CarlaSimulator:
                             self.last_obstacle_steer = obstacle_steering
                             base_steer += obstacle_steering
                         
-                        # Improved recovery behavior for high angle deviations
-                        if angle > 45.0:  # Reduced from 60.0 degrees
-                            # Reduce speed more gradually
-                            speed_factor = 0.9  # Increased from 0.8
-                            # Apply stronger steering correction with dynamic adjustment
-                            recovery_steer = turn_direction * 0.15  # Increased from 0.1
-                            # Add a smaller random component to break out of oscillation
-                            recovery_steer += random.uniform(-0.003, 0.003)  # Reduced from -0.005/0.005
-                            # Smoothly transition to recovery steering
-                            base_steer = base_steer * 0.7 + recovery_steer * 0.3
-                            print("High angle detected - applying recovery behavior")
-                        
                         # Calculate speed with improved stability
-                        max_speed = 3.0  # Reduced from 3.5 m/s
-                        speed_factor = 1.0 - abs(road_curvature)
-                        
-                        # If there's an obstacle, reduce speed more gradually
-                        if obstacle_detected:
-                            speed_factor *= 0.99  # Increased from 0.98 for smoother speed reduction
-                        
-                        # Further reduce speed based on angle to next waypoint
-                        if angle > 15.0:  # Reduced from 20.0 degrees
-                            speed_factor *= 0.98  # Increased from 0.95 for smoother speed reduction
-                        
-                        # Add improved recovery behavior for high angle deviations
-                        if angle > 20.0:  # Reduced from 25.0 degrees
-                            # Reduce speed significantly but more gradually
-                            speed_factor *= 0.8  # Increased from 0.7 for less aggressive slowing
-                            # Apply stronger steering correction with dynamic adjustment
-                            recovery_steer = turn_direction * 0.1  # Reduced from 0.15
-                            # Add a smaller random component to break out of oscillation
-                            recovery_steer += random.uniform(-0.005, 0.005)  # Reduced from -0.01/0.01
-                            base_steer = recovery_steer
-                            print("High angle detected - applying recovery behavior")
-                        
                         target_speed = max_speed * max(0.5, speed_factor)  # Increased minimum speed factor from 0.4
                         
                         # Get current velocity
