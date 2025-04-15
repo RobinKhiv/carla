@@ -1157,65 +1157,30 @@ class CarlaSimulator:
              math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
         ))
         
-        # More gradual speed reduction based on angle
-        if abs(angle) > 30.0:  # Increased from 20.0
-            target_velocity *= 0.9  # Increased from 0.7 for better speed maintenance
-        elif abs(angle) > 15.0:  # Increased from 10.0
-            target_velocity *= 0.95  # Increased from 0.85 for better speed maintenance
+        # Simplified speed control based on angle
+        if abs(angle) > 30.0:
+            target_velocity *= 0.8  # Reduce speed for sharp turns
+        elif abs(angle) > 15.0:
+            target_velocity *= 0.9  # Slight reduction for moderate turns
         
-        # Check for obstacles with different handling for different types
-        min_speed = 5.0  # Minimum speed in km/h
-        for actor in self.world.get_actors():
-            # Handle pedestrians
-            if actor.type_id.startswith('walker.pedestrian'):
-                distance = actor.get_location().distance(vehicle_location)
-                if distance < 15.0:  # Reduced from 20.0 for more focused detection
-                    # Less aggressive speed reduction for pedestrians
-                    if distance < 5.0:  # Very close
-                        target_velocity = max(min_speed, target_velocity * 0.8)  # Increased from 0.7
-                    elif distance < 10.0:  # Moderately close
-                        target_velocity = max(min_speed, target_velocity * 0.9)  # Increased from 0.8
-                    else:  # Far but detected
-                        target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
-                    break
-            # Handle parked cars differently
-            elif actor.type_id.startswith('vehicle.') and actor != self.vehicle:
-                distance = actor.get_location().distance(vehicle_location)
-                if distance < 10.0:  # Shorter detection range for parked cars
-                    # Check if the car is moving (parked cars have very low velocity)
-                    velocity = actor.get_velocity().length()
-                    if velocity < 0.1:  # Consider it parked if velocity is very low
-                        # Less aggressive speed reduction for parked cars
-                        if distance < 5.0:  # Very close
-                            target_velocity = max(min_speed, target_velocity * 0.9)  # Increased from 0.8
-                        else:  # Moderately close
-                            target_velocity = max(min_speed, target_velocity * 0.95)  # Increased from 0.9
-                    else:  # Moving vehicle
-                        # More aggressive reduction for moving vehicles
-                        if distance < 5.0:
-                            target_velocity = max(min_speed, target_velocity * 0.7)
-                        elif distance < 10.0:
-                            target_velocity = max(min_speed, target_velocity * 0.8)
-                    break
-        
-        # Calculate throttle and brake with more aggressive acceleration
+        # Calculate throttle and brake with simplified logic
         if speed_diff > 0:
             # Accelerate more aggressively
-            throttle = min(0.8, speed_diff / target_velocity)  # Increased from 0.6
+            throttle = min(0.7, speed_diff / target_velocity)
             brake = 0.0
         else:
-            # Only brake when significantly over target speed
+            # Only apply minimal brake when significantly over target speed
             throttle = 0.0
-            brake = min(0.05, abs(speed_diff) / target_velocity)  # Reduced from 0.1
-            
-        # Apply smoothing to throttle and brake with reduced smoothing for more responsive control
+            brake = min(0.02, abs(speed_diff) / target_velocity)  # Reduced brake to minimum
+        
+        # Apply minimal smoothing to throttle and brake
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.8  # Reduced from 0.95 for more responsive acceleration
+            smoothing_factor = 0.7  # Reduced smoothing for more responsive control
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.8  # Reduced from 0.95
+            smoothing_factor = 0.7  # Reduced smoothing
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
-            
+        
         self.last_throttle = throttle
         self.last_brake = brake
         
