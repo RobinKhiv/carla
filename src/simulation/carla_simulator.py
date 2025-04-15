@@ -79,6 +79,9 @@ class CarlaSimulator:
         try:
             # Get pedestrian blueprints
             walker_bp = self.world.get_blueprint_library().filter('walker.pedestrian.*')
+            if not walker_bp:
+                print("Warning: No pedestrian blueprints found")
+                return
             
             # Get spawn points
             spawn_points = []
@@ -427,6 +430,12 @@ class CarlaSimulator:
                 if not self.sensor_manager:
                     raise RuntimeError("Failed to initialize sensor manager")
             
+            # Initialize ML manager if not already done
+            if not self.ml_manager:
+                self.ml_manager = MLManager()
+                if not self.ml_manager:
+                    raise RuntimeError("Failed to initialize ML manager")
+            
             # Setup sensors with proper callback
             def camera_callback(image):
                 """Callback for camera sensor data."""
@@ -490,6 +499,8 @@ class CarlaSimulator:
                     
                     # Process sensor data
                     try:
+                        if not self.ml_manager:
+                            raise RuntimeError("ML manager not initialized")
                         features = self.ml_manager.process_sensor_data(sensor_data)
                     except Exception as e:
                         print(f"Error processing sensor data: {e}")
