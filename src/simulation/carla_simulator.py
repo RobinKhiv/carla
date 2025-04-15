@@ -586,7 +586,7 @@ class CarlaSimulator:
                             continue
                         
                         # Get next waypoint (look further ahead)
-                        next_waypoint = current_waypoint.next(5.0)[0]  # Look 5 meters ahead
+                        next_waypoint = current_waypoint.next(3.0)[0]  # Reduced lookahead distance
                         if next_waypoint is None:
                             print("Warning: No next waypoint found")
                             continue
@@ -628,10 +628,27 @@ class CarlaSimulator:
                                 obstacle_detected = True
                                 break
                         
+                        # Calculate speed based on angle to next waypoint
+                        max_speed = 5.0  # Reduced maximum speed (in m/s)
+                        speed_factor = 1.0 - (angle / 90.0)  # Reduce speed based on turn angle
+                        target_speed = max_speed * max(0.2, speed_factor)  # Minimum speed of 1 m/s
+                        
+                        # Get current velocity
+                        current_velocity = self.vehicle.get_velocity().length()
+                        
+                        # Calculate throttle and brake based on speed difference
+                        speed_diff = target_speed - current_velocity
+                        if speed_diff > 0:
+                            throttle = min(0.3, speed_diff / 2.0)  # Reduced throttle
+                            brake = 0.0
+                        else:
+                            throttle = 0.0
+                            brake = min(0.5, -speed_diff / 2.0)
+                        
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
-                            throttle=float(decision.get('throttle', 0.3)) if not obstacle_detected else 0.0,  # Reduced default throttle
-                            brake=float(decision.get('brake', 0.0)) if not obstacle_detected else 0.5,
+                            throttle=float(throttle) if not obstacle_detected else 0.0,
+                            brake=float(brake) if not obstacle_detected else 0.5,
                             steer=float(steer)  # Use calculated steering
                         )
                         
@@ -639,6 +656,8 @@ class CarlaSimulator:
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
                         print(f"Vehicle angle to waypoint: {angle} degrees")
                         print(f"Turn direction: {turn_direction}")
+                        print(f"Target speed: {target_speed} m/s")
+                        print(f"Current speed: {current_velocity} m/s")
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
