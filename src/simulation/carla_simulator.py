@@ -192,8 +192,8 @@ class CarlaSimulator:
             except Exception as e:
                 print(f"Error updating camera: {e}")
 
-    def spawn_traffic(self, num_vehicles: int = 10, num_pedestrians: int = 20):
-        """Spawn traffic using CARLA's built-in traffic manager."""
+    def spawn_traffic(self, num_vehicles: int = 10, num_pedestrians: int = 50):
+        """Spawn traffic and create specific scenarios for testing ethical decision making."""
         try:
             # Get vehicle blueprints
             vehicle_bp = self.world.get_blueprint_library().filter('vehicle.*')
@@ -238,35 +238,84 @@ class CarlaSimulator:
                     print(f"Warning: Failed to spawn vehicle at point {i}: {e}")
                     continue
             
-            # Spawn pedestrians using CARLA's built-in pedestrian manager
+            # Create specific pedestrian scenarios
             try:
                 # Get pedestrian blueprints
                 walker_bp = self.world.get_blueprint_library().filter('walker.pedestrian.*')
                 
-                # Get spawn points for pedestrians
-                spawn_points = []
-                for _ in range(num_pedestrians):
-                    spawn_point = carla.Transform()
-                    spawn_point.location = self.world.get_random_location_from_navigation()
-                    if spawn_point.location is not None:
-                        spawn_points.append(spawn_point)
-                
-                # Spawn pedestrians
-                for spawn_point in spawn_points:
-                    try:
-                        walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                        if walker is not None:
-                            # Set pedestrian to be non-collidable with other pedestrians
-                            walker.set_simulate_physics(False)
-                            # Set random destination
-                            destination = self.world.get_random_location_from_navigation()
-                            if destination is not None:
+                # Scenario 1: Crosswalk scenario
+                crosswalk_location = self.world.get_map().get_waypoint(carla.Location(x=100, y=0, z=0))
+                if crosswalk_location:
+                    for i in range(10):  # 10 pedestrians at crosswalk
+                        try:
+                            # Spawn pedestrians on the crosswalk
+                            spawn_point = carla.Transform()
+                            spawn_point.location = crosswalk_location.transform.location
+                            spawn_point.location.x += random.uniform(-2, 2)
+                            spawn_point.location.y += random.uniform(-2, 2)
+                            
+                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                            if walker is not None:
+                                # Set pedestrian to walk across the street
+                                destination = carla.Location(
+                                    x=spawn_point.location.x,
+                                    y=spawn_point.location.y + 10.0,  # Walk across the street
+                                    z=spawn_point.location.z
+                                )
                                 walker.set_location(destination)
-                    except Exception as e:
-                        print(f"Warning: Failed to spawn pedestrian: {e}")
-                        continue
+                                self.pedestrians.append(walker)
+                        except Exception as e:
+                            print(f"Warning: Failed to spawn crosswalk pedestrian: {e}")
                 
-                print(f"Spawned {num_vehicles} vehicles and {num_pedestrians} pedestrians")
+                # Scenario 2: School zone scenario
+                school_zone_location = self.world.get_map().get_waypoint(carla.Location(x=200, y=0, z=0))
+                if school_zone_location:
+                    for i in range(15):  # 15 pedestrians in school zone
+                        try:
+                            spawn_point = carla.Transform()
+                            spawn_point.location = school_zone_location.transform.location
+                            spawn_point.location.x += random.uniform(-5, 5)
+                            spawn_point.location.y += random.uniform(-5, 5)
+                            
+                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                            if walker is not None:
+                                # Set pedestrian to walk randomly in the area
+                                destination = carla.Location(
+                                    x=spawn_point.location.x + random.uniform(-10, 10),
+                                    y=spawn_point.location.y + random.uniform(-10, 10),
+                                    z=spawn_point.location.z
+                                )
+                                walker.set_location(destination)
+                                self.pedestrians.append(walker)
+                        except Exception as e:
+                            print(f"Warning: Failed to spawn school zone pedestrian: {e}")
+                
+                # Scenario 3: Busy intersection scenario
+                intersection_location = self.world.get_map().get_waypoint(carla.Location(x=300, y=0, z=0))
+                if intersection_location:
+                    for i in range(25):  # 25 pedestrians at intersection
+                        try:
+                            spawn_point = carla.Transform()
+                            spawn_point.location = intersection_location.transform.location
+                            spawn_point.location.x += random.uniform(-10, 10)
+                            spawn_point.location.y += random.uniform(-10, 10)
+                            
+                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                            if walker is not None:
+                                # Set pedestrian to walk in different directions
+                                angle = random.uniform(0, 360)
+                                distance = random.uniform(5, 15)
+                                destination = carla.Location(
+                                    x=spawn_point.location.x + distance * math.cos(math.radians(angle)),
+                                    y=spawn_point.location.y + distance * math.sin(math.radians(angle)),
+                                    z=spawn_point.location.z
+                                )
+                                walker.set_location(destination)
+                                self.pedestrians.append(walker)
+                        except Exception as e:
+                            print(f"Warning: Failed to spawn intersection pedestrian: {e}")
+                
+                print(f"Spawned {num_vehicles} vehicles and {len(self.pedestrians)} pedestrians in various scenarios")
             except Exception as e:
                 print(f"Error spawning pedestrians: {e}")
             
@@ -470,7 +519,7 @@ class CarlaSimulator:
             
             # Spawn traffic
             print("Spawning traffic...")
-            self.spawn_traffic(10, 20)  # Spawn 10 vehicles and 20 pedestrians
+            self.spawn_traffic(10, 50)  # Spawn 10 vehicles and 50 pedestrians
             
             # Set up camera
             if not self.setup_camera():
@@ -516,27 +565,21 @@ class CarlaSimulator:
                         self.vehicle.get_transform().rotation.roll
                     ])
                     
-                    # Get current and next waypoints
+                    # Get current and next waypoints using CARLA's built-in navigation
                     current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
                     next_waypoint = current_waypoint.next(1.0)[0] if current_waypoint else None
                     
                     if next_waypoint:
-                        next_waypoint_location = np.array([
-                            next_waypoint.transform.location.x,
-                            next_waypoint.transform.location.y,
-                            next_waypoint.transform.location.z
-                        ])
+                        # Use CARLA's built-in obstacle detection
+                        nearby_actors = self.world.get_actors()
                         
-                        # Detect obstacles using CARLA's built-in features
-                        obstacles = self.detect_obstacles()
+                        # Check for traffic lights using CARLA's built-in system
+                        traffic_light_state = self.check_traffic_light()
                         
-                        # Get control values from ML model
-                        throttle, brake, steer = self.obstacle_avoidance.predict_control(
-                            vehicle_location, speed, vehicle_rotation, 
-                            obstacles, next_waypoint_location
-                        )
+                        # Get control values from CARLA's traffic manager
+                        control = self.vehicle.get_control()
                         
-                        # Get RL state and action
+                        # Apply ethical adjustments based on RL agent
                         state = self.rl_agent.get_state(self.vehicle, self.world)
                         action = self.rl_agent.select_action(state)
                         
@@ -548,22 +591,14 @@ class CarlaSimulator:
                         throttle_adjustment = [0.0, 0.5, 1.0][throttle_level]
                         steer_adjustment = [-0.5, 0.0, 0.5][steer_level]
                         
-                        # Combine ML and RL controls
-                        final_throttle = (throttle + throttle_adjustment) / 2
-                        final_steer = (steer + steer_adjustment) / 2
+                        # Combine CARLA's controls with RL adjustments
+                        control.throttle = (control.throttle + throttle_adjustment) / 2
+                        control.steer = (control.steer + steer_adjustment) / 2
                         
-                        # Apply control with safety checks
-                        control = carla.VehicleControl()
-                        
-                        # Safety checks
+                        # Safety checks using CARLA's built-in features
                         if speed > 50.0:  # Max speed limit
-                            final_throttle = 0.0
-                            brake = 0.3
-                        
-                        # Apply controls
-                        control.throttle = final_throttle
-                        control.brake = brake
-                        control.steer = final_steer
+                            control.throttle = 0.0
+                            control.brake = 0.3
                         
                         # Apply control to vehicle
                         self.vehicle.apply_control(control)
@@ -571,7 +606,7 @@ class CarlaSimulator:
                         # Get next state for RL
                         next_state = self.rl_agent.get_state(self.vehicle, self.world)
                         
-                        # Calculate reward
+                        # Calculate reward based on ethical considerations
                         reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
                         total_reward += reward
                         
@@ -590,26 +625,10 @@ class CarlaSimulator:
                         if episode % 10 == 0:
                             self.rl_agent.update_target_network()
                         
-                        # Update model with experience
-                        if len(obstacles) > 0:
-                            # Calculate target controls based on safety
-                            target_throttle = 0.0 if speed > 30.0 else 0.3
-                            target_brake = 0.3 if speed > 30.0 else 0.0
-                            target_steer = final_steer  # Keep current steering
-                            
-                            # Add experience to model
-                            self.obstacle_avoidance.update_model((
-                                self.obstacle_avoidance.preprocess_input(
-                                    vehicle_location, speed, vehicle_rotation,
-                                    obstacles, next_waypoint_location
-                                ),
-                                (target_throttle, target_brake, target_steer)
-                            ))
-                        
                         # Print vehicle state
                         print(f"\rEpisode: {episode}, Total Reward: {total_reward:.2f}, "
                               f"Speed: {speed:.2f} km/h, Position: ({vehicle_location[0]:.2f}, {vehicle_location[1]:.2f}), "
-                              f"Obstacles: {len(obstacles)}, Steering: {final_steer:.2f}, "
+                              f"Traffic Light: {traffic_light_state}, Steering: {control.steer:.2f}, "
                               f"Epsilon: {self.rl_agent.epsilon:.2f}, Loss: {loss if loss is not None else 0.0:.4f}", end="")
                         
                         if done:
