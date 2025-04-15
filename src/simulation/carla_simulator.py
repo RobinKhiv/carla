@@ -281,15 +281,16 @@ class CarlaSimulator:
             
             # Calculate camera position (behind and above the vehicle)
             camera_location = carla.Location(
-                x=-10.0 * vehicle_transform.get_forward_vector().x,
-                y=-10.0 * vehicle_transform.get_forward_vector().y,
-                z=5.0
+                x=vehicle_transform.location.x - 10.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
+                y=vehicle_transform.location.y - 10.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
+                z=vehicle_transform.location.z + 5.0  # Increased height for better view
             )
             
             # Set camera rotation to look at vehicle
             camera_rotation = carla.Rotation(
-                pitch=-20.0,
-                yaw=vehicle_transform.rotation.yaw
+                pitch=-15.0,  # Looking slightly down at the vehicle
+                yaw=vehicle_transform.rotation.yaw,
+                roll=0.0
             )
             
             # Set spectator transform
@@ -307,16 +308,16 @@ class CarlaSimulator:
                 # Get vehicle transform
                 vehicle_transform = self.vehicle.get_transform()
                 
-                # Calculate camera position (further back and higher for smoother view)
+                # Calculate camera position (behind and above the vehicle)
                 camera_location = carla.Location(
-                    x=vehicle_transform.location.x - 15.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
-                    y=vehicle_transform.location.y - 15.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
-                    z=vehicle_transform.location.z + 8.0  # Increased height for better view
+                    x=vehicle_transform.location.x - 10.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
+                    y=vehicle_transform.location.y - 10.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
+                    z=vehicle_transform.location.z + 5.0  # Increased height for better view
                 )
                 
-                # Calculate camera rotation (looking at vehicle with smoother angle)
+                # Calculate camera rotation (looking at vehicle)
                 camera_rotation = carla.Rotation(
-                    pitch=-15.0,  # Reduced angle for smoother view
+                    pitch=-15.0,  # Looking slightly down at the vehicle
                     yaw=vehicle_transform.rotation.yaw,
                     roll=0.0
                 )
@@ -818,9 +819,11 @@ class CarlaSimulator:
                         if current_velocity < 0.1 and throttle > 0.1:
                             print("Vehicle appears to be stuck - attempting recovery")
                             # Apply reverse throttle and opposite steering
-                            throttle = -0.3
-                            steer = -steer * 0.5  # Reduce steering magnitude
+                            throttle = -0.5  # Increased reverse throttle
+                            steer = -steer * 0.8  # Increased steering magnitude
                             brake = 0.0
+                            # Wait for a moment to allow recovery
+                            time.sleep(0.5)
                         else:
                             # Normal speed control
                             speed_diff = target_speed - current_velocity
@@ -839,10 +842,12 @@ class CarlaSimulator:
                         # If vehicle is tilted too much, try to recover
                         if abs(pitch) > 1.0 or abs(roll) > 1.0:
                             print(f"Vehicle tilted - pitch: {pitch}, roll: {roll}")
-                            # Reduce speed and steering
-                            throttle *= 0.5
-                            steer *= 0.5
-                            brake = 0.1  # Light brake to help stabilize
+                            # More aggressive recovery for tilted vehicle
+                            throttle = 0.0  # Stop applying throttle
+                            brake = 0.3  # Apply moderate brake
+                            steer = 0.0  # Reset steering
+                            # Wait for a moment to allow stabilization
+                            time.sleep(0.5)
                         
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
