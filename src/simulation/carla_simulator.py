@@ -568,18 +568,13 @@ class CarlaSimulator:
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
             
-            # Initialize reinforcement learning agent with ethical priorities
-            ethical_priorities = EthicalPriorities(
-                pedestrian_weight=1.0,  # High priority for pedestrian safety
-                passenger_weight=1.0,   # Equal priority for passenger safety
-                property_weight=0.5,    # Lower priority for property damage
-                traffic_law_weight=0.8  # High priority for traffic laws
-            )
-            self.rl_agent = RLEthicalAgent(
-                state_size=5,  # Speed, nearby actors, traffic light, next waypoint x, y
-                action_size=9,  # 3 throttle levels × 3 steering levels
-                ethical_priorities=ethical_priorities
-            )
+            # Configure traffic manager for ego vehicle
+            self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)  # Always obey traffic lights
+            self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)  # Maintain normal speed
+            self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)  # Safe following distance
+            self.traffic_manager.auto_lane_change(self.vehicle, True)  # Allow lane changes for obstacle avoidance
+            self.traffic_manager.set_hybrid_physics_mode(True)  # Enable hybrid physics
+            self.traffic_manager.set_hybrid_physics_radius(70.0)  # Set physics radius
             
             # Main simulation loop
             self.running = True
@@ -595,89 +590,61 @@ class CarlaSimulator:
                     self.update_camera()
                     
                     # Get vehicle state
-                    vehicle_location = np.array([
-                        self.vehicle.get_location().x,
-                        self.vehicle.get_location().y,
-                        self.vehicle.get_location().z
-                    ])
+                    vehicle_location = self.vehicle.get_location()
                     vehicle_velocity = self.vehicle.get_velocity()
                     speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6  # Convert to km/h
-                    vehicle_rotation = np.array([
-                        self.vehicle.get_transform().rotation.pitch,
-                        self.vehicle.get_transform().rotation.yaw,
-                        self.vehicle.get_transform().rotation.roll
-                    ])
                     
-                    # Get current and next waypoints using CARLA's built-in navigation
-                    current_waypoint = self.world.get_map().get_waypoint(self.vehicle.get_location())
-                    next_waypoint = current_waypoint.next(1.0)[0] if current_waypoint else None
-                    
-                    if next_waypoint:
-                        # Use CARLA's built-in obstacle detection
-                        nearby_actors = self.world.get_actors()
+                    # Get current waypoint and next waypoints
+                    current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
+                    if current_waypoint:
+                        # Get next waypoints for navigation
+                        next_waypoints = current_waypoint.next(5.0)  # Look 5 meters ahead
                         
-                        # Check for traffic lights using CARLA's built-in system
-                        traffic_light_state = self.check_traffic_light()
-                        
-                        # Get control values from CARLA's traffic manager
-                        control = self.vehicle.get_control()
-                        
-                        # Apply ethical adjustments based on RL agent
-                        state = self.rl_agent.get_state(self.vehicle, self.world)
-                        action = self.rl_agent.select_action(state)
-                        
-                        # Convert RL action to control adjustments
-                        throttle_level = action // 3  # 0, 1, or 2
-                        steer_level = action % 3      # 0, 1, or 2
-                        
-                        # Adjust controls based on RL
-                        throttle_adjustment = [0.0, 0.5, 1.0][throttle_level]
-                        steer_adjustment = [-0.5, 0.0, 0.5][steer_level]
-                        
-                        # Combine CARLA's controls with RL adjustments
-                        control.throttle = (control.throttle + throttle_adjustment) / 2
-                        control.steer = (control.steer + steer_adjustment) / 2
-                        
-                        # Safety checks using CARLA's built-in features
-                        if speed > 50.0:  # Max speed limit
-                            control.throttle = 0.0
-                            control.brake = 0.3
-                        
-                        # Apply control to vehicle
-                        self.vehicle.apply_control(control)
-                        
-                        # Get next state for RL
-                        next_state = self.rl_agent.get_state(self.vehicle, self.world)
-                        
-                        # Calculate reward based on ethical considerations
-                        reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
-                        total_reward += reward
-                        
-                        # Check if episode is done
-                        done = False
-                        if self.vehicle.get_velocity().length() < 0.1:  # Vehicle stopped
-                            done = True
-                        
-                        # Store experience
-                        self.rl_agent.remember(state, action, reward, next_state, done)
-                        
-                        # Train the agent
-                        loss = self.rl_agent.train()
-                        
-                        # Update target network periodically
-                        if episode % 10 == 0:
-                            self.rl_agent.update_target_network()
-                        
-                        # Print vehicle state
-                        print(f"\rEpisode: {episode}, Total Reward: {total_reward:.2f}, "
-                              f"Speed: {speed:.2f} km/h, Position: ({vehicle_location[0]:.2f}, {vehicle_location[1]:.2f}), "
-                              f"Traffic Light: {traffic_light_state}, Steering: {control.steer:.2f}, "
-                              f"Epsilon: {self.rl_agent.epsilon:.2f}, Loss: {loss if loss is not None else 0.0:.4f}", end="")
-                        
-                        if done:
-                            episode += 1
-                            total_reward = 0
-                            print()  # New line for next episode
+                        if next_waypoints:
+                            # Use CARLA's built-in navigation
+                            next_waypoint = next_waypoints[0]
+                            
+                            # Check for obstacles using CARLA's built-in system
+                            nearby_actors = self.world.get_actors()
+                            
+                            # Check for pedestrians in front
+                            pedestrian_in_path = False
+                            for actor in nearby_actors.filter('walker.*'):
+                                actor_location = actor.get_location()
+                                distance = vehicle_location.distance(actor_location)
+                                
+                                if distance < 20.0:  # Check within 20 meters
+                                    # Calculate if pedestrian is in vehicle's path
+                                    vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                                    actor_direction = actor_location - vehicle_location
+                                    actor_direction = actor_direction.make_unit_vector()
+                                    
+                                    # If pedestrian is in front (within 30 degrees)
+                                    if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
+                                        pedestrian_in_path = True
+                                        break
+                            
+                            # Get control from traffic manager
+                            control = self.vehicle.get_control()
+                            
+                            # Adjust speed based on obstacles
+                            if pedestrian_in_path:
+                                # Slow down when pedestrian is in path
+                                control.throttle = 0.0
+                                control.brake = 0.3
+                            else:
+                                # Resume normal speed
+                                control.throttle = 0.5
+                                control.brake = 0.0
+                            
+                            # Apply control to vehicle
+                            self.vehicle.apply_control(control)
+                            
+                            # Print vehicle state
+                            print(f"\rSpeed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
+                                  f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
+                                  f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
+                                  f"Steering: {control.steer:.2f}", end="")
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
