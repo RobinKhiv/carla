@@ -1135,8 +1135,8 @@ class CarlaSimulator:
 
     def _calculate_throttle_brake(self, current_velocity, target_velocity, vehicle_transform, next_waypoint):
         """Calculate throttle and brake with improved stability."""
-        # Start with a lower target velocity (20 km/h)
-        target_velocity = 20.0  # Reduced from default target velocity
+        # Start with a very low target velocity (5 km/h)
+        target_velocity = 5.0  # Reduced from 20.0 to 5.0 km/h
         
         # Calculate speed difference
         speed_diff = target_velocity - current_velocity
@@ -1168,20 +1168,20 @@ class CarlaSimulator:
         
         # Calculate throttle and brake with more conservative values
         if speed_diff > 0:
-            # More gradual acceleration
-            throttle = min(0.4, speed_diff / target_velocity)  # Reduced from 0.7
+            # Very gradual acceleration
+            throttle = min(0.2, speed_diff / target_velocity)  # Reduced from 0.4 to 0.2
             brake = 0.0
         else:
             # More aggressive braking to maintain lower speed
             throttle = 0.0
-            brake = min(0.3, abs(speed_diff) / target_velocity)  # Increased from 0.02
+            brake = min(0.3, abs(speed_diff) / target_velocity)
         
         # Apply more smoothing to throttle and brake for smoother transitions
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.9  # Increased from 0.7 for smoother acceleration
+            smoothing_factor = 0.95  # Increased from 0.9 for even smoother acceleration
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.9  # Increased from 0.7
+            smoothing_factor = 0.95  # Increased from 0.9
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
         
         self.last_throttle = throttle
