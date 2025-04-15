@@ -672,7 +672,7 @@ class CarlaSimulator:
                             
                             # Get obstacle avoidance predictions
                             obstacles = self.detect_obstacles()
-                            obstacle_control = self.obstacle_avoidance.predict(
+                            obstacle_control = self.obstacle_avoidance.predict_control(
                                 vehicle_location,
                                 vehicle_velocity,
                                 self.vehicle.get_transform().rotation,
