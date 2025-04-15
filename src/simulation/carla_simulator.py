@@ -612,20 +612,32 @@ class CarlaSimulator:
                         dot_product = vehicle_forward.dot(direction)
                         angle = math.degrees(math.acos(max(-1.0, min(1.0, dot_product))))
                         
-                        # Calculate turn direction using the angle between vectors
-                        # If the next waypoint is to the right of the vehicle's forward vector, steer right
-                        # If it's to the left, steer left
-                        right_vector = carla.Vector3D(
-                            -vehicle_forward.y,
-                            vehicle_forward.x,
-                            0
-                        )
-                        turn_direction = 1 if right_vector.dot(direction) > 0 else -1
+                        # Get the road's right vector at the current waypoint
+                        road_right = current_waypoint.transform.get_right_vector()
                         
-                        # Calculate steering based on angle and turn direction
-                        max_steer = 0.8  # Increased max steering
-                        steer = turn_direction * max_steer * (angle / 45.0)
-                        steer = max(-max_steer, min(max_steer, steer))
+                        # Calculate the vehicle's position relative to the road center
+                        road_center = current_waypoint.transform.location
+                        vehicle_to_center = vehicle_location - road_center
+                        lateral_offset = vehicle_to_center.dot(road_right)
+                        
+                        # Calculate the road's curvature at the current waypoint
+                        road_curvature = 0.0
+                        try:
+                            # Get the next few waypoints to estimate curvature
+                            next_waypoints = current_waypoint.next(10.0)
+                            if len(next_waypoints) > 1:
+                                # Calculate the change in road direction
+                                road_direction = next_waypoints[-1].transform.location - current_waypoint.transform.location
+                                road_direction = road_direction.make_unit_vector()
+                                road_curvature = road_right.dot(road_direction)
+                        except:
+                            pass
+                        
+                        # Calculate steering based on lateral offset and road curvature
+                        max_steer = 0.8
+                        lateral_steer = -lateral_offset / 5.0  # Adjust based on lateral offset
+                        curvature_steer = road_curvature * 2.0  # Adjust based on road curvature
+                        steer = max(-max_steer, min(max_steer, lateral_steer + curvature_steer))
                         
                         # Check for obstacles
                         obstacle_detected = False
@@ -661,7 +673,8 @@ class CarlaSimulator:
                         # Print control values for debugging
                         print(f"Applying controls - Throttle: {control.throttle}, Brake: {control.brake}, Steer: {control.steer}")
                         print(f"Vehicle angle to waypoint: {angle} degrees")
-                        print(f"Turn direction: {turn_direction}")
+                        print(f"Lateral offset: {lateral_offset} meters")
+                        print(f"Road curvature: {road_curvature}")
                         print(f"Target speed: {target_speed} m/s")
                         print(f"Current speed: {current_velocity} m/s")
                         
