@@ -78,16 +78,14 @@ class CarlaSimulator:
             
             # Get spawn points
             spawn_points = []
-            max_attempts = 100  # Maximum attempts to find valid spawn points
-            min_distance = 50.0  # Increased minimum distance between pedestrians
+            max_attempts = 100
+            min_distance = 50.0
             
             for _ in range(max_attempts):
                 spawn_point = carla.Transform()
                 spawn_point.location = self.world.get_random_location_from_navigation()
                 
-                # Check if the spawn point is valid (not colliding)
                 if spawn_point.location is not None:
-                    # Check for collisions at the spawn point
                     collision = False
                     for actor in self.world.get_actors():
                         if actor.get_location().distance(spawn_point.location) < min_distance:
@@ -104,7 +102,6 @@ class CarlaSimulator:
                 walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
                 if walker is not None:
                     self.pedestrians.append(walker)
-                    # Add AI controller for the pedestrian
                     controller = self.world.spawn_actor(
                         self.world.get_blueprint_library().find('controller.ai.walker'),
                         carla.Transform(),
@@ -113,61 +110,61 @@ class CarlaSimulator:
                     if controller is not None:
                         self.walker_controllers.append(controller)
                         controller.start()
-                        # Make pedestrian walk
                         controller.go_to_location(self.world.get_random_location_from_navigation())
-                        controller.set_max_speed(1.4)  # Walking speed
+                        controller.set_max_speed(1.4)
             
             print(f"Spawned {len(self.pedestrians)} pedestrians")
         except Exception as e:
             print(f"Error spawning pedestrians: {e}")
 
-    def spawn_other_vehicles(self, num_vehicles: int = 20):
+    def spawn_other_vehicles(self, num_vehicles: int = 10):
         """Spawn other vehicles in the simulation."""
         try:
             # Get vehicle blueprints
-            vehicle_bps = self.world.get_blueprint_library().filter('vehicle.*')
+            vehicle_bp = self.world.get_blueprint_library().filter('vehicle.*')
             
             # Get spawn points
             spawn_points = self.world.get_map().get_spawn_points()
-            spawn_points = random.sample(spawn_points, min(num_vehicles, len(spawn_points)))
+            if not spawn_points:
+                print("No spawn points available for vehicles")
+                return
             
             # Spawn vehicles
-            for spawn_point in spawn_points:
-                vehicle = self.world.spawn_actor(random.choice(vehicle_bps), spawn_point)
-                self.other_vehicles.append(vehicle)
-                self.traffic_manager.ignore_lights_percentage(vehicle, random.randint(0, 50))
-                self.traffic_manager.vehicle_percentage_speed_difference(vehicle, random.randint(0, 30))
-                self.traffic_manager.auto_lane_change(vehicle, True)
+            for i in range(min(num_vehicles, len(spawn_points))):
+                vehicle = self.world.spawn_actor(
+                    random.choice(vehicle_bp),
+                    spawn_points[i]
+                )
+                if vehicle is not None:
+                    self.other_vehicles.append(vehicle)
+                    # Set autopilot
+                    vehicle.set_autopilot(True)
             
-            print(f"Spawned {len(self.other_vehicles)} other vehicles")
+            print(f"Spawned {len(self.other_vehicles)} vehicles")
         except Exception as e:
-            print(f"Error spawning other vehicles: {e}")
+            print(f"Error spawning vehicles: {e}")
 
-    def spawn_vehicle(self, spawn_point_index: int = 0) -> bool:
-        """Spawn a vehicle at the specified spawn point."""
+    def spawn_vehicle(self) -> bool:
+        """Spawn the ego vehicle."""
         try:
-            # Get spawn points
+            # Get vehicle blueprint
+            blueprint_library = self.world.get_blueprint_library()
+            vehicle_bp = blueprint_library.filter('vehicle.tesla.model3')[0]
+            
+            # Get spawn point
             spawn_points = self.world.get_map().get_spawn_points()
             if not spawn_points:
                 print("No spawn points available")
                 return False
-
-            # Choose spawn point
-            spawn_point = spawn_points[spawn_point_index]
             
-            # Get vehicle blueprint
-            blueprint_library = self.world.get_blueprint_library()
-            vehicle_bp = blueprint_library.find('vehicle.tesla.model3')
-            if vehicle_bp is None:
-                vehicle_bp = random.choice(blueprint_library.filter('vehicle.*.*'))
-
             # Spawn vehicle
+            spawn_point = spawn_points[0]
             self.vehicle = self.world.spawn_actor(vehicle_bp, spawn_point)
-            print(f"Vehicle spawned at: {spawn_point.location}")
-
-            # Attach sensors
-            self.sensor_manager.attach_sensors(self.vehicle)
+            if self.vehicle is None:
+                print("Failed to spawn vehicle")
+                return False
             
+            print("Vehicle spawned successfully")
             return True
         except Exception as e:
             print(f"Error spawning vehicle: {e}")
@@ -340,8 +337,19 @@ class CarlaSimulator:
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
             
-            # Set up camera
+            # Set up camera and sensors
             self.setup_camera()
+            self.sensor_manager.setup_sensors(self.vehicle)
+            
+            # Spawn traffic
+            print("Spawning traffic...")
+            self.spawn_pedestrians(10)
+            self.spawn_other_vehicles(10)
+            
+            # Create scenarios
+            print("Creating scenarios...")
+            self.create_trolley_scenario()
+            self.create_hazard_scenario()
             
             # Main simulation loop
             self.running = True
@@ -352,7 +360,11 @@ class CarlaSimulator:
                     
                     # Get sensor data
                     sensor_data = self.sensor_manager.get_sensor_data()
-                    if not sensor_data or 'camera' not in sensor_data:
+                    if not sensor_data:
+                        print("Warning: No sensor data available")
+                        continue
+                    
+                    if 'camera' not in sensor_data:
                         print("Warning: No camera data available")
                         continue
                     
@@ -366,17 +378,19 @@ class CarlaSimulator:
                     # Make decision
                     try:
                         decision = self.ml_manager.make_decision(features)
+                        print(f"Decision: {decision}")  # Debug output
                     except Exception as e:
                         print(f"Error making decision: {e}")
                         continue
                     
                     # Apply controls
                     try:
-                        self.vehicle.apply_control(carla.VehicleControl(
+                        control = carla.VehicleControl(
                             throttle=float(decision.get('throttle', 0.0)),
                             brake=float(decision.get('brake', 0.0)),
                             steer=float(decision.get('steer', 0.0))
-                        ))
+                        )
+                        self.vehicle.apply_control(control)
                     except Exception as e:
                         print(f"Error applying controls: {e}")
                         continue
