@@ -667,68 +667,71 @@ class CarlaSimulator:
                             # Get control from traffic manager
                             control = self.vehicle.get_control()
                             
-                            # Get state for RL agent
-                            state = self.rl_agent.get_state(self.vehicle, self.world)
-                            
-                            # Select action based on current state
-                            action = self.rl_agent.select_action(state)
-                            
-                            # Convert RL action to control adjustments
-                            throttle_level = action // 3  # 0, 1, or 2
-                            steer_level = action % 3      # 0, 1, or 2
-                            
-                            # Base control values from CARLA's traffic manager
-                            base_throttle = control.throttle
-                            base_steer = control.steer
-                            base_brake = control.brake
-                            
                             if pedestrian_in_path and pedestrian_location:
-                                # Calculate relative position of pedestrian
-                                vehicle_transform = self.vehicle.get_transform()
-                                vehicle_right = vehicle_transform.get_right_vector()
-                                pedestrian_offset = pedestrian_location - vehicle_location
-                                pedestrian_offset = pedestrian_offset.make_unit_vector()
+                                # Get current waypoint
+                                current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
                                 
-                                # Determine if pedestrian is to the left or right
-                                is_pedestrian_left = vehicle_right.dot(pedestrian_offset) > 0
-                                
-                                # Calculate distance to pedestrian
-                                distance_to_pedestrian = vehicle_location.distance(pedestrian_location)
-                                
-                                # Get RL-based control adjustments
-                                throttle_adjustment = [0.0, 0.5, 1.0][throttle_level]
-                                steer_adjustment = [-0.5, 0.0, 0.5][steer_level]
-                                
-                                if distance_to_pedestrian > 5.0:  # If far enough, try to go around
-                                    if is_pedestrian_left:
-                                        # Pedestrian is on the left, steer right
-                                        steer_adjustment = 0.8
+                                if current_waypoint:
+                                    # Get all possible next waypoints
+                                    next_waypoints = current_waypoint.next(5.0)
+                                    
+                                    if next_waypoints:
+                                        # Find the best waypoint to avoid the pedestrian
+                                        best_waypoint = None
+                                        min_pedestrian_distance = float('inf')
+                                        
+                                        for waypoint in next_waypoints:
+                                            # Calculate distance from waypoint to pedestrian
+                                            waypoint_location = waypoint.transform.location
+                                            pedestrian_distance = waypoint_location.distance(pedestrian_location)
+                                            
+                                            if pedestrian_distance > min_pedestrian_distance:
+                                                min_pedestrian_distance = pedestrian_distance
+                                                best_waypoint = waypoint
+                                        
+                                        if best_waypoint:
+                                            # Calculate direction to best waypoint
+                                            waypoint_direction = best_waypoint.transform.location - vehicle_location
+                                            waypoint_direction = waypoint_direction.make_unit_vector()
+                                            
+                                            # Calculate steering angle
+                                            vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                                            cross_product = vehicle_forward.cross(waypoint_direction)
+                                            steering_angle = math.asin(cross_product.z)
+                                            
+                                            # Apply control
+                                            control.steer = steering_angle
+                                            control.throttle = 0.8
+                                            control.brake = 0.0
+                                            
+                                            print(f"\nNavigating around pedestrian at {distance_to_pedestrian:.1f}m")
+                                        else:
+                                            # If no good waypoint found, use RL-based control
+                                            state = self.rl_agent.get_state(self.vehicle, self.world)
+                                            action = self.rl_agent.select_action(state)
+                                            
+                                            throttle_level = action // 3
+                                            steer_level = action % 3
+                                            
+                                            control.throttle = [0.0, 0.5, 1.0][throttle_level]
+                                            control.steer = [-0.5, 0.0, 0.5][steer_level]
+                                            control.brake = 0.0
                                     else:
-                                        # Pedestrian is on the right, steer left
-                                        steer_adjustment = -0.8
-                                    
-                                    # Combine CARLA's control with RL adjustments
-                                    control.throttle = (base_throttle + throttle_adjustment * 0.8) / 1.8
-                                    control.steer = (base_steer + steer_adjustment * 1.0) / 2.0
-                                    control.brake = 0.0
-                                    
-                                    # Print swerving action
-                                    print(f"\nSwerving {'right' if is_pedestrian_left else 'left'} to avoid pedestrian at {distance_to_pedestrian:.1f}m")
-                                else:
-                                    # Too close, use RL to decide whether to stop or continue
-                                    if throttle_level > 0:  # RL suggests continuing
-                                        control.throttle = (base_throttle + throttle_adjustment * 0.3) / 1.3
-                                        control.steer = (base_steer + steer_adjustment * 0.3) / 1.3
-                                        control.brake = 0.1
-                                    else:  # RL suggests stopping
-                                        control.throttle = 0.0
-                                        control.steer = 0.0
-                                        control.brake = 0.5
+                                        # If no waypoints found, use RL-based control
+                                        state = self.rl_agent.get_state(self.vehicle, self.world)
+                                        action = self.rl_agent.select_action(state)
+                                        
+                                        throttle_level = action // 3
+                                        steer_level = action % 3
+                                        
+                                        control.throttle = [0.0, 0.5, 1.0][throttle_level]
+                                        control.steer = [-0.5, 0.0, 0.5][steer_level]
+                                        control.brake = 0.0
                             else:
-                                # Normal driving conditions - combine CARLA and RL controls
-                                control.throttle = (base_throttle + [0.0, 0.5, 1.0][throttle_level]) / 2
-                                control.steer = (base_steer + [-0.5, 0.0, 0.5][steer_level]) / 2
-                                control.brake = base_brake
+                                # Normal driving conditions
+                                control.throttle = 0.8
+                                control.steer = 0.0
+                                control.brake = 0.0
                             
                             # Apply control to vehicle
                             self.vehicle.apply_control(control)
