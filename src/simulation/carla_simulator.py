@@ -655,19 +655,19 @@ class CarlaSimulator:
                         turn_direction = -1.0 if cross_product.z < 0 else 1.0
                         
                         # Calculate steering based on angle and turn direction
-                        max_steer = 0.3  # Reduced from 0.4 to 0.3 for smoother turns
-                        angle_factor = min(1.0, angle / 30.0)  # Reduced angle threshold for earlier response
+                        max_steer = 0.25  # Reduced from 0.3 to 0.25 for smoother turns
+                        angle_factor = min(1.0, angle / 45.0)  # Increased angle threshold for later response
                         base_steer = turn_direction * angle_factor * max_steer
                         
-                        # Add road curvature influence
-                        base_steer += road_curvature * 0.2  # Add road curvature influence
+                        # Add road curvature influence with reduced weight
+                        base_steer += road_curvature * 0.15  # Reduced from 0.2 to 0.15
                         
                         # Apply stronger smoothing to steering
                         if hasattr(self, 'last_steer'):
-                            base_steer = self.last_steer * 0.9 + base_steer * 0.1  # Increased smoothing
+                            base_steer = self.last_steer * 0.95 + base_steer * 0.05  # Increased smoothing from 0.9/0.1 to 0.95/0.05
                         self.last_steer = base_steer
                         
-                        # Add lane keeping behavior
+                        # Add lane keeping behavior with reduced strength
                         lane_center_offset = 0.0
                         try:
                             # Get the current lane's center
@@ -677,92 +677,58 @@ class CarlaSimulator:
                                 # Calculate offset from lane center
                                 lane_center_offset = (self.vehicle.get_location().x - lane_center.x) / 3.0  # Normalize by lane width
                                 # Add small correction to steering
-                                base_steer += lane_center_offset * 0.1  # Reduced lane keeping strength
+                                base_steer += lane_center_offset * 0.05  # Reduced from 0.1 to 0.05
                         except Exception as e:
                             print(f"Error calculating lane center: {e}")
                         
                         # Print lane keeping info
                         print(f"Lane center offset: {lane_center_offset}")
                         
-                        # Check for obstacles with more precise detection
+                        # Check for obstacles in front
                         obstacle_detected = False
-                        min_obstacle_distance = 15.0
-                        obstacle_info = []
-                        is_pedestrian_on_road = False
+                        obstacle_distance = 100.0  # Increased from 50.0 to 100.0 for earlier detection
+                        obstacle_steering = 0.0
                         
-                        for actor in self.world.get_actors():
-                            # Skip the ego vehicle and non-vehicle/walker actors
-                            if actor.id == self.vehicle.id:
-                                continue
-                            if not (actor.type_id.startswith('vehicle.') or actor.type_id.startswith('walker.')):
-                                continue
-                            
-                            distance = actor.get_location().distance(vehicle_location)
-                            if distance < min_obstacle_distance:
-                                # Check if the obstacle is in front of the vehicle
-                                obstacle_direction = actor.get_location() - vehicle_location
-                                obstacle_direction = obstacle_direction.make_unit_vector()
-                                forward_dot = vehicle_forward.dot(obstacle_direction)
+                        # Get vehicle's forward vector
+                        forward_vector = self.vehicle.get_transform().get_forward_vector()
+                        
+                        # Check for vehicles in front
+                        for vehicle in self.world.get_actors().filter('vehicle.*'):
+                            if vehicle.id != self.vehicle.id:
+                                # Calculate distance and angle to other vehicle
+                                other_location = vehicle.get_location()
+                                distance = self.vehicle.get_location().distance(other_location)
+                                direction = other_location - self.vehicle.get_location()
+                                angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
                                 
-                                # For vehicles, use the same criteria as before
-                                if actor.type_id.startswith('vehicle.'):
-                                    if forward_dot > 0.5:  # More than 60 degrees in front
-                                        obstacle_detected = True
-                                        obstacle_info.append({
-                                            'type': actor.type_id,
-                                            'distance': distance,
-                                            'forward_dot': forward_dot
-                                        })
-                                # For pedestrians, be more selective
-                                elif actor.type_id.startswith('walker.'):
-                                    # Get the waypoint at the pedestrian's location
-                                    pedestrian_waypoint = self.world.get_map().get_waypoint(actor.get_location())
-                                    if pedestrian_waypoint:
-                                        # Only consider pedestrians that are on the road or very close to it
-                                        if pedestrian_waypoint.lane_type == carla.LaneType.Driving:
-                                            # For pedestrians on the road, be more cautious
-                                            if forward_dot > 0.3 and distance < 10.0:  # More than 72 degrees in front and within 10m
-                                                obstacle_detected = True
-                                                is_pedestrian_on_road = True
-                                                obstacle_info.append({
-                                                    'type': actor.type_id,
-                                                    'distance': distance,
-                                                    'forward_dot': forward_dot,
-                                                    'lane_type': 'road'
-                                                })
-                                        else:
-                                            # For pedestrians on sidewalks, only stop if they're very close and directly in front
-                                            if distance < 3.0 and forward_dot > 0.9:  # Very close and almost directly in front
-                                                obstacle_detected = True
-                                                obstacle_info.append({
-                                                    'type': actor.type_id,
-                                                    'distance': distance,
-                                                    'forward_dot': forward_dot,
-                                                    'lane_type': 'sidewalk'
-                                                })
+                                # Only consider vehicles in front within a wider angle
+                                if distance < obstacle_distance and angle < 60.0:  # Increased angle from 45.0 to 60.0
+                                    obstacle_detected = True
+                                    obstacle_distance = distance
+                                    # Calculate avoidance steering with reduced intensity
+                                    relative_position = other_location - self.vehicle.get_location()
+                                    obstacle_steering = -0.1 * (relative_position.x / distance)  # Reduced from -0.2 to -0.1
                         
-                        # Print obstacle detection info
-                        if obstacle_info:
-                            print("Obstacles detected:")
-                            for info in obstacle_info:
-                                print(f"- {info['type']} at {info['distance']:.1f}m, forward_dot: {info['forward_dot']:.2f}")
-                                if 'lane_type' in info:
-                                    print(f"  Lane type: {info['lane_type']}")
-                        else:
-                            print("No obstacles detected")
+                        # Check for pedestrians with increased detection range
+                        for pedestrian in self.world.get_actors().filter('walker.*'):
+                            ped_location = pedestrian.get_location()
+                            distance = self.vehicle.get_location().distance(ped_location)
+                            direction = ped_location - self.vehicle.get_location()
+                            angle = math.degrees(math.acos(forward_vector.dot(direction) / (forward_vector.length() * direction.length())))
+                            
+                            if distance < obstacle_distance and angle < 60.0:  # Increased angle from 45.0 to 60.0
+                                obstacle_detected = True
+                                obstacle_distance = distance
+                                # Calculate avoidance steering with reduced intensity
+                                relative_position = ped_location - self.vehicle.get_location()
+                                obstacle_steering = -0.1 * (relative_position.x / distance)  # Reduced from -0.2 to -0.1
                         
-                        # Calculate final steering based on obstacles and lane keeping
+                        # Apply obstacle avoidance steering with smoothing
                         if obstacle_detected:
-                            # When obstacle is detected, maintain lane position but reduce speed
-                            steer = base_steer * 0.8  # Reduced steering sensitivity by 20%
-                            # Add small correction to stay in lane
-                            steer += lane_center_offset * 0.1  # Reduced lane keeping strength
-                        else:
-                            # Normal driving - use base steering with lane keeping
-                            steer = base_steer
-                        
-                        # Ensure steering stays within bounds
-                        steer = max(-0.3, min(0.3, steer))  # Reduced maximum steering angle
+                            if hasattr(self, 'last_obstacle_steer'):
+                                obstacle_steering = self.last_obstacle_steer * 0.8 + obstacle_steering * 0.2  # Increased smoothing
+                            self.last_obstacle_steer = obstacle_steering
+                            base_steer += obstacle_steering
                         
                         # Check traffic light state
                         traffic_light_state = self.check_traffic_light()
@@ -797,9 +763,7 @@ class CarlaSimulator:
                         speed_factor = 1.0 - abs(road_curvature)  # Reduce speed based on curvature
                         
                         # If there's a pedestrian on the road, significantly reduce speed
-                        if is_pedestrian_on_road:
-                            speed_factor *= 0.3  # Reduce speed to 30% when pedestrian is on road
-                        elif obstacle_detected:
+                        if obstacle_detected:
                             speed_factor *= 0.7  # Reduce speed to 70% when obstacle is detected
                         
                         # Further reduce speed based on angle to next waypoint
