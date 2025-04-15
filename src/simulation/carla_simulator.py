@@ -61,7 +61,7 @@ class CarlaSimulator:
             # Get spawn points
             spawn_points = []
             max_attempts = 100  # Maximum attempts to find valid spawn points
-            min_distance = 25.0  # Increased minimum distance between pedestrians
+            min_distance = 30.0  # Increased minimum distance between pedestrians
             
             for _ in range(max_attempts):
                 spawn_point = carla.Transform()
@@ -229,15 +229,15 @@ class CarlaSimulator:
             for i in range(5):
                 # Position pedestrians in a line with spacing
                 pedestrian_location = carla.Location(
-                    x=road_location.x + i * 15.0,  # Increased spacing to 15 meters
-                    y=road_location.y + 30.0,     # Increased distance ahead to 30 meters
+                    x=road_location.x + i * 20.0,  # Increased spacing to 20 meters
+                    y=road_location.y + 40.0,     # Increased distance ahead to 40 meters
                     z=road_location.z
                 )
                 
                 # Check for collisions before spawning
                 collision = False
                 for actor in self.world.get_actors():
-                    if actor.get_location().distance(pedestrian_location) < 15.0:  # Increased collision check distance
+                    if actor.get_location().distance(pedestrian_location) < 20.0:  # Increased collision check distance
                         collision = True
                         break
                 
@@ -266,7 +266,7 @@ class CarlaSimulator:
             # Create a broken-down vehicle scenario
             spawn_point = self.vehicle.get_transform()
             hazard_location = carla.Location(
-                x=spawn_point.location.x + 250.0,  # Increased distance to 250 meters
+                x=spawn_point.location.x + 300.0,  # Increased distance to 300 meters
                 y=spawn_point.location.y,
                 z=spawn_point.location.z
             )
@@ -274,7 +274,7 @@ class CarlaSimulator:
             # Check for collisions before spawning
             collision = False
             for actor in self.world.get_actors():
-                if actor.get_location().distance(hazard_location) < 25.0:  # Increased collision check distance
+                if actor.get_location().distance(hazard_location) < 30.0:  # Increased collision check distance
                     collision = True
                     break
             
@@ -340,11 +340,17 @@ class CarlaSimulator:
         if not self.vehicle:
             return
 
-        # Apply control commands to the vehicle
+        # Get controls from the decision dictionary
+        controls = decision.get('controls', {})
+        throttle = controls.get('throttle', 0.0)
+        brake = controls.get('brake', 0.0)
+        steer = controls.get('steer', 0.0)
+
+        # Create and apply vehicle control
         control = carla.VehicleControl()
-        control.throttle = decision.get('throttle', 0.0)
-        control.steer = decision.get('steer', 0.0)
-        control.brake = decision.get('brake', 0.0)
+        control.throttle = float(throttle)
+        control.brake = float(brake)
+        control.steer = float(steer)
         
         self.vehicle.apply_control(control)
 
