@@ -716,6 +716,9 @@ class CarlaSimulator:
                         if hasattr(self, 'speed_factor'):
                             throttle *= self.speed_factor
                         
+                        # Initialize steering value
+                        steer = base_steer  # Use the base_steer value calculated earlier
+                        
                         # Check vehicle orientation
                         vehicle_transform = self.vehicle.get_transform()
                         pitch = vehicle_transform.rotation.pitch
