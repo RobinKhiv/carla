@@ -726,41 +726,38 @@ class CarlaSimulator:
         # Get the vehicle's forward vector
         vehicle_forward = vehicle_transform.get_forward_vector()
         
-        # Find the nearest traffic light
-        traffic_light = None
+        # Get all traffic lights in the world
+        traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
+        
+        # Find the nearest traffic light in front of the vehicle
+        nearest_light = None
         min_distance = float('inf')
         
-        for actor in self.world.get_actors():
-            if actor.type_id.startswith('traffic.traffic_light'):
-                # Get traffic light location
-                light_location = actor.get_location()
-                
-                # Calculate vector from vehicle to traffic light
-                light_direction = light_location - vehicle_location
-                light_direction = light_direction.make_unit_vector()
-                
-                # Check if traffic light is in front of the vehicle
-                forward_dot = vehicle_forward.dot(light_direction)
-                if forward_dot > 0.5:  # Traffic light is in front of vehicle
-                    distance = vehicle_location.distance(light_location)
-                    if distance < min_distance:
-                        min_distance = distance
-                        traffic_light = actor
+        for light in traffic_lights:
+            # Get traffic light location
+            light_location = light.get_location()
+            
+            # Calculate vector from vehicle to traffic light
+            light_direction = light_location - vehicle_location
+            light_direction = light_direction.make_unit_vector()
+            
+            # Check if traffic light is in front of the vehicle
+            forward_dot = vehicle_forward.dot(light_direction)
+            if forward_dot > 0.5:  # Traffic light is in front of vehicle
+                distance = vehicle_location.distance(light_location)
+                if distance < min_distance and distance < 50.0:  # Only consider lights within 50 meters
+                    min_distance = distance
+                    nearest_light = light
         
-        if traffic_light and min_distance < 50.0:  # Only consider traffic lights within 50 meters
-            # Get the waypoint at the traffic light
-            light_waypoint = self.world.get_map().get_waypoint(traffic_light.get_location())
-            if light_waypoint:
-                # Calculate stopping distance (5 meters before the traffic light)
-                stopping_distance = 5.0
-                if min_distance <= stopping_distance:
-                    state = traffic_light.get_state()
-                    if state == carla.TrafficLightState.Green:
-                        return 'green'
-                    elif state == carla.TrafficLightState.Yellow:
-                        return 'yellow'
-                    else:
-                        return 'red'
+        if nearest_light:
+            # Get the state of the traffic light
+            state = nearest_light.get_state()
+            if state == carla.TrafficLightState.Green:
+                return 'green'
+            elif state == carla.TrafficLightState.Yellow:
+                return 'yellow'
+            elif state == carla.TrafficLightState.Red:
+                return 'red'
         
         return 'unknown'
 
