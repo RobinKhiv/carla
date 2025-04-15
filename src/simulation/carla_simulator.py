@@ -667,6 +667,21 @@ class CarlaSimulator:
                             # Get control from traffic manager
                             control = self.vehicle.get_control()
                             
+                            # Get state for RL agent
+                            state = self.rl_agent.get_state(self.vehicle, self.world)
+                            
+                            # Select action based on current state
+                            action = self.rl_agent.select_action(state)
+                            
+                            # Convert RL action to control adjustments
+                            throttle_level = action // 3  # 0, 1, or 2
+                            steer_level = action % 3      # 0, 1, or 2
+                            
+                            # Base control values from CARLA's traffic manager
+                            base_throttle = control.throttle
+                            base_steer = control.steer
+                            base_brake = control.brake
+                            
                             if pedestrian_in_path and pedestrian_location:
                                 # Calculate relative position of pedestrian
                                 vehicle_transform = self.vehicle.get_transform()
@@ -680,25 +695,40 @@ class CarlaSimulator:
                                 # Calculate distance to pedestrian
                                 distance_to_pedestrian = vehicle_location.distance(pedestrian_location)
                                 
-                                # Always try to go around the pedestrian
-                                if is_pedestrian_left:
-                                    # Pedestrian is on the left, steer right
-                                    control.steer = 0.8
+                                # Get RL-based control adjustments
+                                throttle_adjustment = [0.0, 0.5, 1.0][throttle_level]
+                                steer_adjustment = [-0.5, 0.0, 0.5][steer_level]
+                                
+                                if distance_to_pedestrian > 5.0:  # If far enough, try to go around
+                                    if is_pedestrian_left:
+                                        # Pedestrian is on the left, steer right
+                                        steer_adjustment = 0.8
+                                    else:
+                                        # Pedestrian is on the right, steer left
+                                        steer_adjustment = -0.8
+                                    
+                                    # Combine CARLA's control with RL adjustments
+                                    control.throttle = (base_throttle + throttle_adjustment * 0.8) / 1.8
+                                    control.steer = (base_steer + steer_adjustment * 1.0) / 2.0
+                                    control.brake = 0.0
+                                    
+                                    # Print swerving action
+                                    print(f"\nSwerving {'right' if is_pedestrian_left else 'left'} to avoid pedestrian at {distance_to_pedestrian:.1f}m")
                                 else:
-                                    # Pedestrian is on the right, steer left
-                                    control.steer = -0.8
-                                
-                                # Maintain speed while swerving
-                                control.throttle = 0.8
-                                control.brake = 0.0
-                                
-                                # Print swerving action
-                                print(f"\nSwerving {'right' if is_pedestrian_left else 'left'} to avoid pedestrian at {distance_to_pedestrian:.1f}m")
+                                    # Too close, use RL to decide whether to stop or continue
+                                    if throttle_level > 0:  # RL suggests continuing
+                                        control.throttle = (base_throttle + throttle_adjustment * 0.3) / 1.3
+                                        control.steer = (base_steer + steer_adjustment * 0.3) / 1.3
+                                        control.brake = 0.1
+                                    else:  # RL suggests stopping
+                                        control.throttle = 0.0
+                                        control.steer = 0.0
+                                        control.brake = 0.5
                             else:
-                                # Normal driving conditions
-                                control.throttle = 0.8
-                                control.steer = 0.0
-                                control.brake = 0.0
+                                # Normal driving conditions - combine CARLA and RL controls
+                                control.throttle = (base_throttle + [0.0, 0.5, 1.0][throttle_level]) / 2
+                                control.steer = (base_steer + [-0.5, 0.0, 0.5][steer_level]) / 2
+                                control.brake = base_brake
                             
                             # Apply control to vehicle
                             self.vehicle.apply_control(control)
@@ -709,8 +739,8 @@ class CarlaSimulator:
                             # Calculate reward based on ethical considerations
                             reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
                             
-                            # Additional reward for successful lane changes
-                            if pedestrian_in_path:
+                            # Additional reward for successful pedestrian avoidance
+                            if pedestrian_in_path and distance_to_pedestrian > 5.0:
                                 reward += 0.5  # Reward for finding a clear path around pedestrian
                             
                             total_reward += reward
