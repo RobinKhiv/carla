@@ -427,9 +427,35 @@ class CarlaSimulator:
                 if not self.sensor_manager:
                     raise RuntimeError("Failed to initialize sensor manager")
             
-            # Setup sensors
-            if not self.sensor_manager.setup_sensors(self.vehicle):
-                raise RuntimeError("Failed to setup sensors")
+            # Setup sensors with proper callback
+            def camera_callback(image):
+                """Callback for camera sensor data."""
+                try:
+                    # Convert image to numpy array
+                    array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+                    array = np.reshape(array, (image.height, image.width, 4))
+                    array = array[:, :, :3]  # Remove alpha channel
+                    
+                    # Store the image data
+                    self.sensor_manager.sensor_data['camera'] = array
+                except Exception as e:
+                    print(f"Error in camera callback: {e}")
+            
+            # Setup camera sensor
+            camera_bp = self.world.get_blueprint_library().find('sensor.camera.rgb')
+            camera_bp.set_attribute('image_size_x', '800')
+            camera_bp.set_attribute('image_size_y', '600')
+            camera_bp.set_attribute('fov', '90')
+            
+            # Attach camera to vehicle
+            camera_transform = carla.Transform(carla.Location(x=1.5, z=2.4))
+            camera = self.world.spawn_actor(camera_bp, camera_transform, attach_to=self.vehicle)
+            if camera is None:
+                raise RuntimeError("Failed to spawn camera sensor")
+            
+            # Register callback
+            camera.listen(camera_callback)
+            self.sensor_manager.sensors['camera'] = camera
             
             # Spawn traffic
             print("Spawning traffic...")
