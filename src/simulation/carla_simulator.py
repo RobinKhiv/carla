@@ -809,6 +809,11 @@ class CarlaSimulator:
                         # Get current velocity
                         current_velocity = self.vehicle.get_velocity().length()
                         
+                        # Initialize control variables
+                        throttle = 0.0
+                        brake = 0.0
+                        steer = base_steer
+                        
                         # Check if vehicle is stuck (very low velocity but applying throttle)
                         if current_velocity < 0.1 and throttle > 0.1:
                             print("Vehicle appears to be stuck - attempting recovery")
