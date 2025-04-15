@@ -622,6 +622,7 @@ class CarlaSimulator:
                             
                             # Check for pedestrians in front
                             pedestrian_in_path = False
+                            pedestrian_location = None
                             for actor in nearby_actors.filter('walker.*'):
                                 actor_location = actor.get_location()
                                 distance = vehicle_location.distance(actor_location)
@@ -635,6 +636,7 @@ class CarlaSimulator:
                                     # If pedestrian is in front (within 30 degrees)
                                     if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
                                         pedestrian_in_path = True
+                                        pedestrian_location = actor_location
                                         break
                             
                             # Get control from traffic manager
@@ -654,66 +656,33 @@ class CarlaSimulator:
                             throttle_adjustment = [0.0, 0.5, 1.0][throttle_level]
                             steer_adjustment = [-0.5, 0.0, 0.5][steer_level]
                             
-                            # Check if we can change lanes to avoid pedestrian
-                            can_change_lanes = False
-                            if pedestrian_in_path:
-                                # Get current lane
-                                current_lane = current_waypoint.lane_id
+                            if pedestrian_in_path and pedestrian_location:
+                                # Calculate relative position of pedestrian
+                                vehicle_transform = self.vehicle.get_transform()
+                                vehicle_right = vehicle_transform.get_right_vector()
+                                pedestrian_offset = pedestrian_location - vehicle_location
+                                pedestrian_offset = pedestrian_offset.make_unit_vector()
                                 
-                                # Check adjacent lanes
-                                left_lane = current_waypoint.get_left_lane()
-                                right_lane = current_waypoint.get_right_lane()
+                                # Determine if pedestrian is to the left or right
+                                is_pedestrian_left = vehicle_right.dot(pedestrian_offset) > 0
                                 
-                                # Check if adjacent lanes are valid
-                                if left_lane and left_lane.lane_type == carla.LaneType.Driving:
-                                    # Check for vehicles in left lane
-                                    left_clear = True
-                                    for actor in nearby_actors.filter('vehicle.*'):
-                                        if actor.id != self.vehicle.id:
-                                            actor_location = actor.get_location()
-                                            left_lane_location = left_lane.transform.location
-                                            if actor_location.distance(left_lane_location) < 10.0:  # Increased range for safety
-                                                # Check if vehicle is moving towards us
-                                                actor_velocity = actor.get_velocity()
-                                                if actor_velocity.length() > 0.1:  # Vehicle is moving
-                                                    actor_direction = actor_velocity.make_unit_vector()
-                                                    our_direction = self.vehicle.get_velocity().make_unit_vector()
-                                                    if actor_direction.dot(our_direction) < -0.5:  # Moving towards us
-                                                        left_clear = False
-                                                        break
-                                    if left_clear:
-                                        can_change_lanes = True
-                                        steer_adjustment = -0.5  # Steer left
+                                # Calculate distance to pedestrian
+                                distance_to_pedestrian = vehicle_location.distance(pedestrian_location)
                                 
-                                elif right_lane and right_lane.lane_type == carla.LaneType.Driving:
-                                    # Check for vehicles in right lane
-                                    right_clear = True
-                                    for actor in nearby_actors.filter('vehicle.*'):
-                                        if actor.id != self.vehicle.id:
-                                            actor_location = actor.get_location()
-                                            right_lane_location = right_lane.transform.location
-                                            if actor_location.distance(right_lane_location) < 10.0:  # Increased range for safety
-                                                # Check if vehicle is moving towards us
-                                                actor_velocity = actor.get_velocity()
-                                                if actor_velocity.length() > 0.1:  # Vehicle is moving
-                                                    actor_direction = actor_velocity.make_unit_vector()
-                                                    our_direction = self.vehicle.get_velocity().make_unit_vector()
-                                                    if actor_direction.dot(our_direction) < -0.5:  # Moving towards us
-                                                        right_clear = False
-                                                        break
-                                    if right_clear:
-                                        can_change_lanes = True
-                                        steer_adjustment = 0.5  # Steer right
-                            
-                            # Combine CARLA's controls with RL adjustments
-                            if pedestrian_in_path:
-                                if can_change_lanes:
-                                    # When changing lanes, use more aggressive steering
-                                    control.throttle = (control.throttle + throttle_adjustment * 0.5) / 1.5
+                                if distance_to_pedestrian > 5.0:  # If far enough, try to go around
+                                    if is_pedestrian_left:
+                                        # Pedestrian is on the left, steer right
+                                        steer_adjustment = 0.5
+                                    else:
+                                        # Pedestrian is on the right, steer left
+                                        steer_adjustment = -0.5
+                                    
+                                    # Maintain some speed while navigating around
+                                    control.throttle = (control.throttle + throttle_adjustment * 0.7) / 1.7
                                     control.steer = (control.steer + steer_adjustment * 0.8) / 1.8
-                                    control.brake = 0.1  # Minimal braking while changing lanes
+                                    control.brake = 0.1
                                 else:
-                                    # When can't change lanes, slow down and prepare to stop
+                                    # Too close, slow down more
                                     control.throttle = (control.throttle + throttle_adjustment * 0.3) / 1.3
                                     control.steer = (control.steer + steer_adjustment * 0.3) / 1.3
                                     control.brake = 0.3
@@ -733,7 +702,7 @@ class CarlaSimulator:
                             reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
                             
                             # Additional reward for successful lane changes
-                            if can_change_lanes and pedestrian_in_path:
+                            if pedestrian_in_path:
                                 reward += 0.5  # Reward for finding a clear path around pedestrian
                             
                             total_reward += reward
