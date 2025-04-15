@@ -760,9 +760,27 @@ class CarlaSimulator:
                         else:
                             steer = base_steer
                         
-                        # Calculate speed based on road curvature
+                        # Calculate speed based on road curvature and obstacles
                         max_speed = 5.0
                         speed_factor = 1.0 - abs(road_curvature)  # Reduce speed based on curvature
+                        
+                        # Check if there's a sidewalk pedestrian
+                        is_sidewalk_pedestrian = False
+                        sidewalk_pedestrian_distance = float('inf')
+                        for info in obstacle_info:
+                            if info.get('lane_type') == 'sidewalk':
+                                is_sidewalk_pedestrian = True
+                                sidewalk_pedestrian_distance = min(sidewalk_pedestrian_distance, info['distance'])
+                        
+                        # Adjust speed based on sidewalk pedestrian distance
+                        if is_sidewalk_pedestrian:
+                            if sidewalk_pedestrian_distance < 5.0:
+                                speed_factor *= 0.3  # Slow down significantly when very close
+                            elif sidewalk_pedestrian_distance < 10.0:
+                                speed_factor *= 0.6  # Moderate slowdown when moderately close
+                            else:
+                                speed_factor *= 0.8  # Slight slowdown when far away
+                        
                         target_speed = max_speed * max(0.2, speed_factor)
                         
                         # Get current velocity
@@ -779,8 +797,8 @@ class CarlaSimulator:
                         
                         # Create and apply vehicle control
                         control = carla.VehicleControl(
-                            throttle=float(throttle) if not obstacle_detected else 0.0,
-                            brake=float(brake) if not obstacle_detected else 0.5,
+                            throttle=float(throttle),
+                            brake=float(brake),
                             steer=float(steer)  # Use calculated steering
                         )
                         
