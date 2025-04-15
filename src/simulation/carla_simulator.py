@@ -483,8 +483,8 @@ class CarlaSimulator:
             
             # Spawn traffic first
             print("Spawning traffic...")
-            self.spawn_pedestrians(10)
-            self.spawn_other_vehicles(10)
+            # self.spawn_pedestrians(10)
+            # self.spawn_other_vehicles(10)
             
             # Wait a moment for traffic to settle
             for _ in range(10):
