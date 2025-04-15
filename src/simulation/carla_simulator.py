@@ -4,7 +4,8 @@ import math
 import numpy as np
 import random
 import cv2
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
+from .obstacle_avoidance import ObstacleAvoidance
 
 class CarlaSimulator:
     def __init__(self, host: str = 'localhost', port: int = 2000):
@@ -21,6 +22,7 @@ class CarlaSimulator:
             self.pedestrians = []
             self.other_vehicles = []
             self.walker_controllers = []
+            self.obstacle_avoidance = ObstacleAvoidance()
             
         except Exception as e:
             print(f"Error initializing CARLA simulator: {e}")
@@ -261,6 +263,57 @@ class CarlaSimulator:
         except Exception as e:
             print(f"Error spawning traffic: {e}")
 
+    def detect_obstacles(self) -> List[Tuple[np.ndarray, float, str]]:
+        """Detect obstacles (vehicles and pedestrians) around the ego vehicle."""
+        obstacles = []
+        
+        if not self.vehicle:
+            return obstacles
+        
+        # Get vehicle location and transform
+        vehicle_location = self.vehicle.get_location()
+        vehicle_transform = self.vehicle.get_transform()
+        
+        # Get all actors in the world
+        actors = self.world.get_actors()
+        
+        # Check for vehicles
+        for actor in actors.filter('vehicle.*'):
+            if actor.id != self.vehicle.id:  # Skip ego vehicle
+                actor_location = actor.get_location()
+                distance = vehicle_location.distance(actor_location)
+                
+                # Only consider vehicles in front of us
+                vehicle_forward = vehicle_transform.get_forward_vector()
+                actor_direction = actor_location - vehicle_location
+                actor_direction = actor_direction.make_unit_vector()
+                
+                if vehicle_forward.dot(actor_direction) > 0.5:  # Only consider if in front
+                    obstacles.append((
+                        np.array([actor_location.x, actor_location.y, actor_location.z]),
+                        distance,
+                        'vehicle'
+                    ))
+        
+        # Check for pedestrians
+        for actor in actors.filter('walker.*'):
+            actor_location = actor.get_location()
+            distance = vehicle_location.distance(actor_location)
+            
+            # Only consider pedestrians in front of us
+            vehicle_forward = vehicle_transform.get_forward_vector()
+            actor_direction = actor_location - vehicle_location
+            actor_direction = actor_direction.make_unit_vector()
+            
+            if vehicle_forward.dot(actor_direction) > 0.5:  # Only consider if in front
+                obstacles.append((
+                    np.array([actor_location.x, actor_location.y, actor_location.z]),
+                    distance,
+                    'pedestrian'
+                ))
+        
+        return obstacles
+
     def run(self):
         """Run the simulation."""
         try:
@@ -305,97 +358,44 @@ class CarlaSimulator:
                     # Get next waypoint
                     next_waypoint = current_waypoint.next(5.0)[0]  # Look 5 meters ahead
                     
-                    # Calculate basic controls
-                    control = carla.VehicleControl()
+                    # Get vehicle state
+                    vehicle_location = np.array([
+                        self.vehicle.get_location().x,
+                        self.vehicle.get_location().y,
+                        self.vehicle.get_location().z
+                    ])
+                    vehicle_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
+                    vehicle_rotation = np.array([
+                        self.vehicle.get_transform().rotation.pitch,
+                        self.vehicle.get_transform().rotation.yaw,
+                        self.vehicle.get_transform().rotation.roll
+                    ])
                     
-                    # Get current velocity
-                    current_velocity = self.vehicle.get_velocity().length() * 3.6  # Convert to km/h
+                    # Detect obstacles
+                    obstacles = self.detect_obstacles()
                     
-                    # Check for traffic lights
-                    vehicle_location = self.vehicle.get_location()
-                    vehicle_transform = self.vehicle.get_transform()
-                    
-                    # Get all traffic lights in the world
-                    traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
-                    
-                    # Find the nearest traffic light in front of the vehicle
-                    nearest_light = None
-                    min_distance = float('inf')
-                    
-                    for light in traffic_lights:
-                        # Get traffic light location
-                        light_location = light.get_location()
-                        
-                        # Calculate distance to traffic light
-                        distance = vehicle_location.distance(light_location)
-                        
-                        # Check if traffic light is in front of the vehicle
-                        vehicle_forward = vehicle_transform.get_forward_vector()
-                        light_direction = light_location - vehicle_location
-                        light_direction = light_direction.make_unit_vector()
-                        
-                        if vehicle_forward.dot(light_direction) > 0.5 and distance < 30.0:  # Only consider lights within 30 meters in front
-                            if distance < min_distance:
-                                min_distance = distance
-                                nearest_light = light
-                    
-                    # If we found a traffic light, check its state
-                    if nearest_light and min_distance < 10.0:  # Only consider lights within 10 meters
-                        state = nearest_light.get_state()
-                        if state == carla.TrafficLightState.Red or state == carla.TrafficLightState.Yellow:
-                            print(f"Traffic light is {state}, stopping...")
-                            control.throttle = 0.0
-                            control.brake = 1.0
-                            control.steer = 0.0
-                            self.vehicle.apply_control(control)
-                            continue
-                    
-                    # Set target speed
-                    target_speed = 20.0  # km/h
-                    
-                    # Calculate throttle and brake
-                    if current_velocity < target_speed:
-                        control.throttle = 0.5
-                        control.brake = 0.0
-                    else:
-                        control.throttle = 0.0
-                        control.brake = 0.1
-                    
-                    # Calculate steering
-                    vehicle_transform = self.vehicle.get_transform()
-                    vehicle_location = vehicle_transform.location
-                    waypoint_location = next_waypoint.transform.location
-                    
-                    # Calculate vector to waypoint
-                    waypoint_vector = carla.Location(
-                        waypoint_location.x - vehicle_location.x,
-                        waypoint_location.y - vehicle_location.y,
-                        0
+                    # Get control from obstacle avoidance model
+                    throttle, brake, steer = self.obstacle_avoidance.predict_control(
+                        vehicle_location,
+                        vehicle_velocity,
+                        vehicle_rotation,
+                        obstacles
                     )
                     
-                    # Calculate angle between vehicle's forward vector and waypoint vector
-                    vehicle_forward = vehicle_transform.get_forward_vector()
-                    angle = math.degrees(math.acos(
-                        (vehicle_forward.x * waypoint_vector.x + vehicle_forward.y * waypoint_vector.y) /
-                        (math.sqrt(vehicle_forward.x**2 + vehicle_forward.y**2) * 
-                         math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
-                    ))
-                    
-                    # Calculate cross product to determine direction
-                    cross = vehicle_forward.x * waypoint_vector.y - vehicle_forward.y * waypoint_vector.x
-                    if cross < 0:
-                        angle = -angle
-                    
-                    # Set steering based on angle
-                    control.steer = angle / 70.0  # 70 degrees is approximately the maximum steering angle
+                    # Create control command
+                    control = carla.VehicleControl()
+                    control.throttle = throttle
+                    control.brake = brake
+                    control.steer = steer
                     
                     # Apply control to vehicle
                     self.vehicle.apply_control(control)
                     
                     # Print vehicle state
-                    print(f"Vehicle velocity: {current_velocity:.2f} km/h")
+                    print(f"Vehicle velocity: {vehicle_velocity:.2f} km/h")
                     print(f"Vehicle position: {vehicle_location}")
-                    print(f"Vehicle rotation: {vehicle_transform.rotation}")
+                    print(f"Vehicle rotation: {vehicle_rotation}")
+                    print(f"Number of obstacles detected: {len(obstacles)}")
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
