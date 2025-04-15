@@ -410,7 +410,36 @@ class CarlaSimulator:
                         print(f"Static obstacle detected {distance:.2f} meters ahead, stopping...")
                         return 0.0, 1.0  # Full brake
         
-        # Rest of the existing throttle/brake calculation code
+        # Calculate speed difference
+        speed_diff = target_velocity - current_velocity
+        
+        # Initialize throttle and brake
+        throttle = 0.0
+        brake = 0.0
+        
+        # Adjust speed based on angle to next waypoint
+        if abs(angle_to_next_waypoint) > 30.0:
+            # Sharp turn, reduce speed
+            target_velocity *= 0.8
+        elif abs(angle_to_next_waypoint) > 15.0:
+            # Moderate turn, slightly reduce speed
+            target_velocity *= 0.9
+            
+        # Calculate throttle and brake based on speed difference
+        if speed_diff > 0:
+            # Need to accelerate
+            throttle = min(0.7, speed_diff / 10.0)  # Cap throttle at 0.7
+            brake = 0.0
+        else:
+            # Need to decelerate
+            throttle = 0.0
+            brake = min(0.3, abs(speed_diff) / 10.0)  # Cap brake at 0.3
+            
+        # Apply smoothing
+        self.throttle = self.throttle * 0.95 + throttle * 0.05
+        self.brake = self.brake * 0.95 + brake * 0.05
+        
+        return self.throttle, self.brake
 
     def run(self):
         """Run the simulation."""
