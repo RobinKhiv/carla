@@ -745,19 +745,20 @@ class CarlaSimulator:
             forward_dot = vehicle_forward.dot(light_direction)
             if forward_dot > 0.5:  # Traffic light is in front of vehicle
                 distance = vehicle_location.distance(light_location)
-                if distance < min_distance and distance < 50.0:  # Only consider lights within 50 meters
+                if distance < min_distance and distance < 30.0:  # Reduced from 50.0 to 30.0 meters
                     min_distance = distance
                     nearest_light = light
         
         if nearest_light:
             # Get the state of the traffic light
             state = nearest_light.get_state()
-            if state == carla.TrafficLightState.Green:
-                return 'green'
-            elif state == carla.TrafficLightState.Yellow:
-                return 'yellow'
-            elif state == carla.TrafficLightState.Red:
-                return 'red'
+            if min_distance <= 3.0:  # Reduced from 5.0 to 3.0 meters
+                if state == carla.TrafficLightState.Green:
+                    return 'green'
+                elif state == carla.TrafficLightState.Yellow:
+                    return 'yellow'
+                elif state == carla.TrafficLightState.Red:
+                    return 'red'
         
         return 'unknown'
 
