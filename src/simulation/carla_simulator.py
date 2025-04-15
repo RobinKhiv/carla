@@ -696,18 +696,21 @@ class CarlaSimulator:
                                 
                                 if distance_to_pedestrian > 5.0:  # If far enough, try to go around
                                     if is_pedestrian_left:
-                                        # Pedestrian is on the left, steer right
-                                        steer_adjustment = 0.5
+                                        # Pedestrian is on the left, steer right more aggressively
+                                        steer_adjustment = 0.8  # Increased from 0.5
                                     else:
-                                        # Pedestrian is on the right, steer left
-                                        steer_adjustment = -0.5
+                                        # Pedestrian is on the right, steer left more aggressively
+                                        steer_adjustment = -0.8  # Increased from -0.5
                                     
-                                    # Maintain some speed while navigating around
-                                    control.throttle = (control.throttle + throttle_adjustment * 0.7) / 1.7
-                                    control.steer = (control.steer + steer_adjustment * 0.8) / 1.8
-                                    control.brake = 0.1
+                                    # Maintain speed while swerving
+                                    control.throttle = (control.throttle + throttle_adjustment * 0.8) / 1.8  # Increased from 0.7
+                                    control.steer = (control.steer + steer_adjustment * 1.0) / 2.0  # Increased from 0.8
+                                    control.brake = 0.0  # No braking while swerving
+                                    
+                                    # Print swerving action
+                                    print(f"\nSwerving {'right' if is_pedestrian_left else 'left'} to avoid pedestrian at {distance_to_pedestrian:.1f}m")
                                 else:
-                                    # Too close, slow down more
+                                    # Too close, slow down and prepare to stop
                                     control.throttle = (control.throttle + throttle_adjustment * 0.3) / 1.3
                                     control.steer = (control.steer + steer_adjustment * 0.3) / 1.3
                                     control.brake = 0.3
