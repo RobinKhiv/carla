@@ -1250,23 +1250,23 @@ class CarlaSimulator:
         if cross < 0:
             angle = -angle
             
-        # Improved steering calculation with smoother transitions
-        max_steer = 0.1  # Reduced from 0.15 for smoother turns
-        angle_threshold = 30.0  # Reduced from 45 for earlier response
+        # Improved steering calculation with more aggressive response to high angles
+        max_steer = 0.15  # Increased from 0.1 for sharper turns
+        angle_threshold = 25.0  # Reduced from 30.0 for earlier response
         
-        # Calculate base steering
+        # Calculate base steering with more aggressive response
         if abs(angle) > angle_threshold:
-            # Recovery behavior for high angles
+            # More aggressive recovery behavior for high angles
             steer = max_steer * (angle / abs(angle))
-            # Reduce speed during recovery
-            current_velocity *= 0.5
+            # Reduce speed more during recovery
+            current_velocity *= 0.4  # Reduced from 0.5
         else:
-            # Normal steering with smoother transitions
+            # Normal steering with more responsive transitions
             steer = (angle / angle_threshold) * max_steer
             
-        # Apply smoothing to steering
+        # Apply smoothing to steering with reduced smoothing factor
         if hasattr(self, 'last_steer'):
-            smoothing_factor = 0.95  # Increased from 0.9 for more stability
+            smoothing_factor = 0.9  # Reduced from 0.95 for more responsive steering
             steer = smoothing_factor * self.last_steer + (1 - smoothing_factor) * steer
             
         self.last_steer = steer
@@ -1296,28 +1296,28 @@ class CarlaSimulator:
              math.sqrt(waypoint_vector.x**2 + waypoint_vector.y**2))
         ))
         
-        # Adjust target velocity based on angle
+        # More aggressive speed reduction based on angle
         if abs(angle) > 30.0:
-            target_velocity *= 0.5  # Reduce speed for sharp turns
+            target_velocity *= 0.4  # Reduced from 0.5
         elif abs(angle) > 15.0:
-            target_velocity *= 0.7  # Moderate speed reduction for medium turns
+            target_velocity *= 0.6  # Reduced from 0.7
             
-        # Calculate throttle and brake
+        # Calculate throttle and brake with more aggressive response
         if speed_diff > 0:
             # Accelerate
-            throttle = min(0.5, speed_diff / target_velocity)  # Reduced max throttle
+            throttle = min(0.3, speed_diff / target_velocity)  # Increased from 0.2
             brake = 0.0
         else:
             # Decelerate
             throttle = 0.0
-            brake = min(0.5, abs(speed_diff) / target_velocity)  # Reduced max brake
+            brake = min(0.3, abs(speed_diff) / target_velocity)  # Increased from 0.2
             
-        # Apply smoothing to throttle and brake
+        # Apply smoothing to throttle and brake with reduced smoothing
         if hasattr(self, 'last_throttle'):
-            smoothing_factor = 0.95
+            smoothing_factor = 0.9  # Reduced from 0.95
             throttle = smoothing_factor * self.last_throttle + (1 - smoothing_factor) * throttle
         if hasattr(self, 'last_brake'):
-            smoothing_factor = 0.95
+            smoothing_factor = 0.9  # Reduced from 0.95
             brake = smoothing_factor * self.last_brake + (1 - smoothing_factor) * brake
             
         self.last_throttle = throttle
