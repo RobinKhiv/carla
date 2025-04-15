@@ -668,7 +668,7 @@ class CarlaSimulator:
                                         # Only consider pedestrians that are on the road or very close to it
                                         if pedestrian_waypoint.lane_type == carla.LaneType.Driving:
                                             # For pedestrians on the road, be more cautious
-                                            if forward_dot > 0.3:  # More than 72 degrees in front
+                                            if forward_dot > 0.3 and distance < 10.0:  # More than 72 degrees in front and within 10m
                                                 obstacle_detected = True
                                                 obstacle_info.append({
                                                     'type': actor.type_id,
@@ -678,7 +678,7 @@ class CarlaSimulator:
                                                 })
                                         else:
                                             # For pedestrians on sidewalks, only stop if they're very close and directly in front
-                                            if distance < 5.0 and forward_dot > 0.8:  # Very close and almost directly in front
+                                            if distance < 3.0 and forward_dot > 0.9:  # Very close and almost directly in front
                                                 obstacle_detected = True
                                                 obstacle_info.append({
                                                     'type': actor.type_id,
