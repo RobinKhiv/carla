@@ -330,6 +330,12 @@ class CarlaSimulator:
             if not self.spawn_vehicle():
                 raise RuntimeError("Failed to spawn ego vehicle")
             
+            # Configure traffic manager for ego vehicle
+            self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)  # Always obey traffic lights
+            self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)  # Maintain normal speed
+            self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)  # Safe following distance
+            self.traffic_manager.auto_lane_change(self.vehicle, False)  # Disable automatic lane changes
+            
             # Spawn traffic
             print("Spawning traffic...")
             self.spawn_traffic(10, 20)  # Spawn 10 vehicles and 20 pedestrians
@@ -380,6 +386,37 @@ class CarlaSimulator:
                     
                     # Detect obstacles
                     obstacles = self.detect_obstacles()
+                    
+                    # Check for traffic lights
+                    traffic_light_state = self.check_traffic_light()
+                    if traffic_light_state == 'red' or traffic_light_state == 'yellow':
+                        print(f"Traffic light is {traffic_light_state}, stopping...")
+                        control = carla.VehicleControl()
+                        control.throttle = 0.0
+                        control.brake = 1.0
+                        control.steer = 0.0
+                        self.vehicle.apply_control(control)
+                        continue
+                    
+                    # Check for vehicles in front
+                    nearest_vehicle = None
+                    min_distance = float('inf')
+                    for obstacle in obstacles:
+                        if obstacle[2] == 'vehicle':  # If it's a vehicle
+                            distance = obstacle[1]
+                            if distance < min_distance:
+                                min_distance = distance
+                                nearest_vehicle = obstacle
+                    
+                    # If there's a vehicle in front within 10 meters, slow down
+                    if nearest_vehicle and min_distance < 10.0:
+                        print(f"Vehicle detected {min_distance:.2f} meters ahead, slowing down...")
+                        control = carla.VehicleControl()
+                        control.throttle = 0.0
+                        control.brake = 0.3
+                        control.steer = 0.0
+                        self.vehicle.apply_control(control)
+                        continue
                     
                     # Get control from obstacle avoidance model
                     throttle, brake, steer = self.obstacle_avoidance.predict_control(
