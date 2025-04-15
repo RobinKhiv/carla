@@ -234,7 +234,7 @@ class CarlaSimulator:
                             self.vehicle.set_autopilot(False)
                             # Set initial control values
                             control = carla.VehicleControl()
-                            control.throttle = 0.5  # Initial throttle
+                            control.throttle = 0.1  # Reduced initial throttle
                             control.steer = 0.0
                             control.brake = 0.0
                             self.vehicle.apply_control(control)
@@ -304,7 +304,6 @@ class CarlaSimulator:
             # Get vehicle transform
             vehicle_transform = self.vehicle.get_transform()
             
-            # Calculate camera position (behind and above the vehicle)
             # Get vehicle's forward vector
             yaw = math.radians(vehicle_transform.rotation.yaw)
             forward_vector = carla.Location(
@@ -314,15 +313,16 @@ class CarlaSimulator:
             )
             
             # Calculate camera position (behind and above the vehicle)
+            # Position the camera closer to the vehicle for better following
             camera_location = vehicle_transform.location + carla.Location(
-                x=-10.0 * forward_vector.x,
-                y=-10.0 * forward_vector.y,
-                z=5.0
+                x=-8.0 * forward_vector.x,  # Reduced from -10.0 to -8.0
+                y=-8.0 * forward_vector.y,  # Reduced from -10.0 to -8.0
+                z=3.0  # Reduced from 5.0 to 3.0 for better view
             )
             
             # Calculate camera rotation to look at vehicle
             camera_rotation = carla.Rotation(
-                pitch=-20.0,
+                pitch=-15.0,  # Reduced from -20.0 for better view
                 yaw=vehicle_transform.rotation.yaw
             )
             
@@ -539,6 +539,9 @@ class CarlaSimulator:
                     # Tick the world
                     self.world.tick()
                     
+                    # Update camera position every frame
+                    self.update_camera()
+                    
                     # Get sensor data
                     if not self.sensor_manager:
                         print("Warning: Sensor manager not initialized")
@@ -624,7 +627,7 @@ class CarlaSimulator:
                         road_curvature = 0.0
                         try:
                             # Get the next few waypoints to estimate curvature
-                            next_waypoints = current_waypoint.next(10.0)
+                            next_waypoints = current_waypoint.next(20.0)  # Increased lookahead distance
                             if len(next_waypoints) > 1:
                                 # Get the road's forward vector at current waypoint
                                 current_forward = current_waypoint.transform.get_forward_vector()
@@ -633,15 +636,19 @@ class CarlaSimulator:
                                 next_forward = next_waypoints[-1].transform.get_forward_vector()
                                 
                                 # Calculate the change in direction using the cross product
-                                # This gives us the direction and magnitude of the turn
                                 turn_vector = current_forward.cross(next_forward)
                                 
                                 # The z-component of the cross product tells us if it's a right or left turn
-                                # Positive z means right turn, negative z means left turn
                                 road_curvature = turn_vector.z
                                 
-                                # Normalize the curvature
-                                road_curvature = max(-1.0, min(1.0, road_curvature))
+                                # Normalize the curvature and apply a scaling factor
+                                road_curvature = max(-1.0, min(1.0, road_curvature * 2.0))
+                                
+                                # Print detailed curvature information
+                                print(f"Current forward: {current_forward}")
+                                print(f"Next forward: {next_forward}")
+                                print(f"Turn vector: {turn_vector}")
+                                print(f"Raw curvature: {turn_vector.z}")
                         except Exception as e:
                             print(f"Error calculating road curvature: {e}")
                         
@@ -649,33 +656,18 @@ class CarlaSimulator:
                         max_steer = 0.8
                         
                         # Lateral offset correction (keep vehicle centered)
-                        lateral_steer = -lateral_offset / 5.0  # Adjust based on lateral offset
+                        lateral_steer = -lateral_offset / 5.0
                         
                         # Road curvature following (follow the road's natural curve)
-                        # Multiply by a larger factor to make the vehicle follow the road more aggressively
-                        curvature_steer = road_curvature * 3.0
+                        curvature_steer = road_curvature * 2.0
                         
                         # Combine the steering components
                         steer = max(-max_steer, min(max_steer, lateral_steer + curvature_steer))
                         
-                        # Print debug information
-                        print(f"Road curvature: {road_curvature}")
-                        print(f"Lateral offset: {lateral_offset}")
-                        print(f"Lateral steer: {lateral_steer}")
-                        print(f"Curvature steer: {curvature_steer}")
-                        print(f"Final steer: {steer}")
-                        
-                        # Check for obstacles
-                        obstacle_detected = False
-                        for actor in self.world.get_actors():
-                            if actor.id != self.vehicle.id and actor.get_location().distance(vehicle_location) < 20.0:
-                                obstacle_detected = True
-                                break
-                        
-                        # Calculate speed based on angle to next waypoint
-                        max_speed = 5.0  # Reduced maximum speed (in m/s)
-                        speed_factor = 1.0 - (angle / 90.0)  # Reduce speed based on turn angle
-                        target_speed = max_speed * max(0.2, speed_factor)  # Minimum speed of 1 m/s
+                        # Calculate speed based on road curvature
+                        max_speed = 5.0
+                        speed_factor = 1.0 - abs(road_curvature)  # Reduce speed based on curvature
+                        target_speed = max_speed * max(0.2, speed_factor)
                         
                         # Get current velocity
                         current_velocity = self.vehicle.get_velocity().length()
@@ -723,9 +715,6 @@ class CarlaSimulator:
                     except Exception as e:
                         print(f"Error applying controls: {e}")
                         continue
-                    
-                    # Update camera
-                    self.update_camera()
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
