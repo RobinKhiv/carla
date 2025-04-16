@@ -57,13 +57,13 @@ class CarlaSimulator:
             if not available_maps:
                 raise RuntimeError("No maps available in CARLA server")
             
-            # Try to load Town04 (has proper highways)
+            # Try to load Town10 (downtown map)
             try:
-                print("Loading Town04 map...")
-                self.client.load_world('Town04')
+                print("Loading Town10 map...")
+                self.client.load_world('Town10HD_Opt')
             except Exception as e:
-                print(f"Failed to load Town04: {e}")
-                raise RuntimeError("Failed to load Town04 map")
+                print(f"Failed to load Town10: {e}")
+                raise RuntimeError("Failed to load Town10 map")
             
             # Get the world
             self.world = self.client.get_world()
@@ -275,7 +275,7 @@ class CarlaSimulator:
                     print(f"Warning: Failed to spawn vehicle at point {i}: {e}")
                     continue
             
-            # Create specific pedestrian scenarios on highways
+            # Create pedestrian scenarios in downtown areas
             pedestrians_spawned = 0
             try:
                 # Get pedestrian blueprints
@@ -286,18 +286,20 @@ class CarlaSimulator:
                 waypoints = self.world.get_map().generate_waypoints(1.0)  # 1.0 meters apart
                 print(f"Total waypoints found: {len(waypoints)}")
                 
-                # Filter waypoints that are on highways
-                highway_waypoints = []
+                # Filter waypoints that are in downtown areas (not highways)
+                downtown_waypoints = []
                 for wp in waypoints:
-                    # Check if waypoint is on a highway (has multiple lanes)
-                    if wp.lane_type == carla.LaneType.Driving and len(wp.next(1.0)) > 1:
-                        highway_waypoints.append(wp)
+                    # Look for waypoints in downtown areas (narrower roads, intersections)
+                    if (wp.lane_type == carla.LaneType.Driving and 
+                        not wp.is_junction and 
+                        len(wp.next(1.0)) <= 2):  # Not a highway
+                        downtown_waypoints.append(wp)
                 
-                if not highway_waypoints:
-                    print("Warning: No highway waypoints found")
+                if not downtown_waypoints:
+                    print("Warning: No downtown waypoints found")
                     return
                 
-                print(f"Found {len(highway_waypoints)} highway waypoints")
+                print(f"Found {len(downtown_waypoints)} downtown waypoints")
                 
                 # Function to try spawning a pedestrian at a location
                 def try_spawn_pedestrian(spawn_point, waypoint):
@@ -323,13 +325,13 @@ class CarlaSimulator:
                         print(f"Failed to spawn pedestrian: {e}")
                     return False
                 
-                # Spawn pedestrians in multiple highway sections
-                num_sections = 20  # Try 20 different highway sections
+                # Spawn pedestrians in downtown areas
+                num_sections = 20  # Try 20 different downtown sections
                 pedestrians_per_section = 5  # Try to spawn 5 pedestrians per section
                 
                 for section in range(num_sections):
                     print(f"\nAttempting to spawn pedestrians in section {section + 1}")
-                    waypoint = random.choice(highway_waypoints)
+                    waypoint = random.choice(downtown_waypoints)
                     spawn_location = waypoint.transform.location
                     
                     # Calculate road direction and perpendicular
@@ -339,7 +341,7 @@ class CarlaSimulator:
                     # Try different spawn points in this section
                     for i in range(pedestrians_per_section):
                         # Try different offsets
-                        for offset in [-3.0, -1.5, 0.0, 1.5, 3.0]:
+                        for offset in [-2.0, -1.0, 0.0, 1.0, 2.0]:  # Smaller offsets for downtown
                             spawn_point = carla.Transform()
                             spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 2.0)
                             spawn_point.location.z += 0.5
@@ -348,14 +350,14 @@ class CarlaSimulator:
                                 break  # Move to next pedestrian if successful
                     
                     # Move to next waypoint for next section
-                    next_waypoints = waypoint.next(50.0)  # Move 50 meters ahead
+                    next_waypoints = waypoint.next(20.0)  # Move 20 meters ahead
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
-                # Additional random pedestrian spawning
-                print("\nAttempting additional random pedestrian spawning...")
+                # Additional random pedestrian spawning in downtown
+                print("\nAttempting additional random pedestrian spawning in downtown...")
                 for _ in range(50):  # Try to spawn 50 more random pedestrians
-                    waypoint = random.choice(highway_waypoints)
+                    waypoint = random.choice(downtown_waypoints)
                     spawn_location = waypoint.transform.location
                     
                     # Calculate road direction and perpendicular
@@ -363,7 +365,7 @@ class CarlaSimulator:
                     perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
                     
                     # Try different offsets
-                    for offset in [-3.0, -1.5, 0.0, 1.5, 3.0]:
+                    for offset in [-2.0, -1.0, 0.0, 1.0, 2.0]:  # Smaller offsets for downtown
                         spawn_point = carla.Transform()
                         spawn_point.location = spawn_location + perpendicular * offset
                         spawn_point.location.z += 0.5
@@ -372,12 +374,12 @@ class CarlaSimulator:
                             break  # Move to next attempt if successful
                     
                     # Move to next waypoint
-                    next_waypoints = waypoint.next(20.0)  # Move 20 meters ahead
+                    next_waypoints = waypoint.next(10.0)  # Move 10 meters ahead
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
                 print(f"\nTotal pedestrians spawned: {pedestrians_spawned}")
-                print(f"Spawned {vehicles_spawned} vehicles and {pedestrians_spawned} pedestrians on highways")
+                print(f"Spawned {vehicles_spawned} vehicles and {pedestrians_spawned} pedestrians in downtown")
                 
             except Exception as e:
                 print(f"Error spawning pedestrians: {e}")
