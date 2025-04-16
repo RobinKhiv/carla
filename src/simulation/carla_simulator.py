@@ -740,7 +740,7 @@ class CarlaSimulator:
                                         rl_throttle = [0.0, 0.5, 1.0][throttle_level]
                                         rl_steer = [-0.5, 0.0, 0.5][steer_level]
                                         
-                                        # Check for available space using machine learning
+                                        # Check for available space using ML
                                         current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
                                         left_lane = current_waypoint.get_left_lane()
                                         right_lane = current_waypoint.get_right_lane()
@@ -748,7 +748,6 @@ class CarlaSimulator:
                                         # Use ML to evaluate available spaces
                                         available_space = []
                                         if left_lane and left_lane.lane_type == carla.LaneType.Driving:
-                                            # Use obstacle avoidance model to evaluate left lane
                                             left_lane_location = left_lane.transform.location
                                             left_lane_clear = self.obstacle_avoidance.evaluate_space(
                                                 np.array([left_lane_location.x, left_lane_location.y, left_lane_location.z]),
@@ -759,7 +758,6 @@ class CarlaSimulator:
                                                 available_space.append(('left', left_lane))
                                         
                                         if right_lane and right_lane.lane_type == carla.LaneType.Driving:
-                                            # Use obstacle avoidance model to evaluate right lane
                                             right_lane_location = right_lane.transform.location
                                             right_lane_clear = self.obstacle_avoidance.evaluate_space(
                                                 np.array([right_lane_location.x, right_lane_location.y, right_lane_location.z]),
@@ -769,7 +767,7 @@ class CarlaSimulator:
                                             if right_lane_clear:
                                                 available_space.append(('right', right_lane))
                                         
-                                        # Combine ML-based space evaluation with RL decisions
+                                        # Combine RL decisions with space evaluation
                                         if available_space:
                                             # Choose best space using ML evaluation
                                             best_lane = None
@@ -777,7 +775,6 @@ class CarlaSimulator:
                                             
                                             for direction, lane in available_space:
                                                 lane_location = lane.transform.location
-                                                # Use ML to score the space
                                                 space_score = self.obstacle_avoidance.score_space(
                                                     np.array([lane_location.x, lane_location.y, lane_location.z]),
                                                     np.array([pedestrian_location.x, pedestrian_location.y, pedestrian_location.z]),
@@ -791,7 +788,7 @@ class CarlaSimulator:
                                                 direction, target_lane = best_lane
                                                 target_location = target_lane.transform.location
                                                 
-                                                # Blend RL steering with ML-based navigation
+                                                # Calculate steering for lane change
                                                 target_direction = target_location - vehicle_location
                                                 target_direction = target_direction.make_unit_vector()
                                                 vehicle_forward = self.vehicle.get_transform().get_forward_vector()
@@ -799,23 +796,33 @@ class CarlaSimulator:
                                                 cross_z = max(-1.0, min(1.0, target_cross.z))
                                                 ml_steer = float(math.asin(cross_z))
                                                 
-                                                # Combine RL and ML controls
+                                                # Blend RL and ML controls based on distance to pedestrian
                                                 if distance_to_pedestrian < 10.0:
-                                                    control.throttle = (rl_throttle + throttle) / 2
-                                                    control.steer = (rl_steer + ml_steer * 1.5) / 2
+                                                    # Close to pedestrian: More aggressive ML-based navigation
+                                                    control.throttle = (rl_throttle * 0.3 + throttle * 0.7)
+                                                    control.steer = (rl_steer * 0.3 + ml_steer * 1.5 * 0.7)
                                                     control.brake = brake
-                                                    print(f"\nML+RL: Navigating through {direction} lane at {distance_to_pedestrian:.1f}m")
+                                                    print(f"\nRL+ML: Aggressive navigation through {direction} lane at {distance_to_pedestrian:.1f}m")
                                                 else:
-                                                    control.throttle = (rl_throttle + throttle) / 2
-                                                    control.steer = (rl_steer + ml_steer) / 2
+                                                    # Further from pedestrian: Balanced RL and ML control
+                                                    control.throttle = (rl_throttle * 0.5 + throttle * 0.5)
+                                                    control.steer = (rl_steer * 0.5 + ml_steer * 0.5)
                                                     control.brake = brake
-                                                    print(f"\nML+RL: Preparing navigation through {direction} lane")
+                                                    print(f"\nRL+ML: Preparing navigation through {direction} lane")
                                         else:
-                                            # No available space, use RL with obstacle avoidance
-                                            control.throttle = (rl_throttle + throttle) / 2
-                                            control.steer = (rl_steer + steer) / 2
-                                            control.brake = brake
-                                            print(f"\nML+RL: Maintaining safe distance at {distance_to_pedestrian:.1f}m")
+                                            # No available space: Use RL with obstacle avoidance
+                                            if distance_to_pedestrian < 15.0:
+                                                # Close to pedestrian: More conservative control
+                                                control.throttle = (rl_throttle * 0.2 + throttle * 0.8)
+                                                control.steer = (rl_steer * 0.2 + steer * 0.8)
+                                                control.brake = brake
+                                                print(f"\nRL+ML: Maintaining safe distance at {distance_to_pedestrian:.1f}m")
+                                            else:
+                                                # Further from pedestrian: More RL influence
+                                                control.throttle = (rl_throttle * 0.7 + throttle * 0.3)
+                                                control.steer = (rl_steer * 0.7 + steer * 0.3)
+                                                control.brake = brake
+                                                print(f"\nRL+ML: RL-guided navigation at {distance_to_pedestrian:.1f}m")
                                         
                                         # Update RL agent with experience
                                         reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
@@ -825,8 +832,8 @@ class CarlaSimulator:
                                         
                                         print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f}")
                                     except Exception as e:
-                                        print(f"Error in ML+RL navigation: {e}")
-                                        # Fall back to obstacle avoidance if ML+RL fails
+                                        print(f"Error in RL+ML navigation: {e}")
+                                        # Fall back to obstacle avoidance if RL+ML fails
                                         control.throttle = throttle
                                         control.steer = steer
                                         control.brake = brake
