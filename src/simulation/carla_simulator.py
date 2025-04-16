@@ -667,8 +667,13 @@ class CarlaSimulator:
                                         distance_to_pedestrian = distance  # Store the float distance
                                         break
                             
-                            # Get control from traffic manager
-                            control = self.vehicle.get_control()
+                            # Initialize control with default values
+                            control = carla.VehicleControl()
+                            control.throttle = 0.0
+                            control.steer = 0.0
+                            control.brake = 0.0
+                            control.hand_brake = False
+                            control.reverse = False
                             
                             # Get state for RL agent
                             state = self.rl_agent.get_state(self.vehicle, self.world)
@@ -680,6 +685,7 @@ class CarlaSimulator:
                             next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
                             next_waypoint_location = next_waypoint.transform.location
                             
+                            # Get obstacle avoidance control values
                             throttle, brake, steer = self.obstacle_avoidance.predict_control(
                                 vehicle_location,
                                 vehicle_velocity,
