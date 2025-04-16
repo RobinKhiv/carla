@@ -718,104 +718,65 @@ class CarlaSimulator:
                                     raise
                                 
                                 if pedestrian_in_path and pedestrian_location:
-                                    # Calculate which side of the road the pedestrian is on
-                                    vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                                    pedestrian_direction = pedestrian_location - vehicle_location
-                                    pedestrian_direction = pedestrian_direction.make_unit_vector()
-                                    cross_product = vehicle_forward.cross(pedestrian_direction)
-                                    pedestrian_side = 1.0 if cross_product.z > 0 else -1.0  # 1 for right, -1 for left
-                                    
-                                    # Get current lane
-                                    current_lane = current_waypoint.lane_id
-                                    
-                                    # Try to find a safe lane to change to
-                                    target_lane = None
-                                    if pedestrian_side > 0:  # Pedestrian on right
-                                        # Try to change to left lane
-                                        left_lane = current_waypoint.get_left_lane()
-                                        if left_lane and left_lane.lane_type == carla.LaneType.Driving:
-                                            # Check if there are vehicles in the target lane
-                                            target_lane_clear = True
-                                            for actor in self.world.get_actors().filter('vehicle.*'):
-                                                if actor.id != self.vehicle.id:
-                                                    actor_location = actor.get_location()
-                                                    actor_waypoint = self.world.get_map().get_waypoint(actor_location)
-                                                    if actor_waypoint and actor_waypoint.lane_id == left_lane.lane_id:
-                                                        distance = vehicle_location.distance(actor_location)
-                                                        if distance < 20.0:  # Check within 20 meters
-                                                            target_lane_clear = False
-                                                            break
-                                            if target_lane_clear:
-                                                target_lane = left_lane
-                                    else:  # Pedestrian on left
-                                        # Try to change to right lane
-                                        right_lane = current_waypoint.get_right_lane()
-                                        if right_lane and right_lane.lane_type == carla.LaneType.Driving:
-                                            # Check if there are vehicles in the target lane
-                                            target_lane_clear = True
-                                            for actor in self.world.get_actors().filter('vehicle.*'):
-                                                if actor.id != self.vehicle.id:
-                                                    actor_location = actor.get_location()
-                                                    actor_waypoint = self.world.get_map().get_waypoint(actor_location)
-                                                    if actor_waypoint and actor_waypoint.lane_id == right_lane.lane_id:
-                                                        distance = vehicle_location.distance(actor_location)
-                                                        if distance < 20.0:  # Check within 20 meters
-                                                            target_lane_clear = False
-                                                            break
-                                            if target_lane_clear:
-                                                target_lane = right_lane
-                                    
-                                    if target_lane:
-                                        # Calculate steering to change lanes
-                                        target_location = target_lane.transform.location
-                                        target_direction = target_location - vehicle_location
-                                        target_direction = target_direction.make_unit_vector()
-                                        target_cross = vehicle_forward.cross(target_direction)
+                                    # Get RL agent's action based on current state
+                                    try:
+                                        action = self.rl_agent.select_action(state)
+                                        # Convert action to control values
+                                        throttle_level = action // 3
+                                        steer_level = action % 3
                                         
-                                        # Ensure the cross product z-component is within valid range [-1, 1]
-                                        cross_z = max(-1.0, min(1.0, target_cross.z))
-                                        steering_angle = float(math.asin(cross_z))
+                                        # Combine RL action with obstacle avoidance
+                                        rl_throttle = [0.0, 0.5, 1.0][throttle_level]
+                                        rl_steer = [-0.5, 0.0, 0.5][steer_level]
                                         
-                                        # More aggressive lane change when pedestrian is close
-                                        if distance_to_pedestrian < 10.0:
-                                            # Ensure steering angle is within valid range [-1, 1]
-                                            control.steer = max(-1.0, min(1.0, steering_angle * 2.0))
-                                            control.throttle = 0.3  # Moderate speed
-                                            control.brake = 0.2  # Light braking
-                                            print(f"\nChanging lanes to avoid pedestrian at {distance_to_pedestrian:.1f}m")
-                                        else:
-                                            # Ensure steering angle is within valid range [-1, 1]
-                                            control.steer = max(-1.0, min(1.0, steering_angle * 1.5))
-                                            control.throttle = 0.5  # Normal speed
-                                            control.brake = 0.1  # Very light braking
-                                            print(f"\nPreparing to change lanes for pedestrian at {distance_to_pedestrian:.1f}m")
-                                    else:
-                                        # If no safe lane change possible, try to create space
-                                        if distance_to_pedestrian < 15.0:
-                                            # More aggressive steering away from pedestrian
-                                            control.steer = max(-1.0, min(1.0, pedestrian_side * 0.8))  # Increased steering away
-                                            control.throttle = 0.1  # Very slow speed
-                                            control.brake = 0.4  # Stronger braking
-                                            print(f"\nNo safe lane change possible, creating space near pedestrian at {distance_to_pedestrian:.1f}m")
-                                        else:
-                                            # Maintain distance and prepare for potential lane change
-                                            control.steer = max(-1.0, min(1.0, pedestrian_side * 0.3))  # Gentle steering away
-                                            control.throttle = 0.3  # Reduced speed
-                                            control.brake = 0.2  # Moderate braking
-                                            print(f"\nMaintaining safe distance from pedestrian at {distance_to_pedestrian:.1f}m")
+                                        # Blend RL and obstacle avoidance controls
+                                        control.throttle = (rl_throttle + throttle) / 2
+                                        control.steer = (rl_steer + steer) / 2
+                                        control.brake = brake
+                                        
+                                        # Calculate reward based on ethical considerations
+                                        reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
+                                        
+                                        # Get next state for RL learning
+                                        next_state = self.rl_agent.get_state(self.vehicle, self.world)
+                                        
+                                        # Store experience for learning
+                                        self.rl_agent.remember(state, action, reward, next_state, False)
+                                        
+                                        # Train the agent
+                                        loss = self.rl_agent.train()
+                                        
+                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f}")
+                                    except Exception as e:
+                                        print(f"Error in RL agent: {e}")
+                                        # Fall back to obstacle avoidance if RL fails
+                                        control.throttle = throttle
+                                        control.steer = steer
+                                        control.brake = brake
                                 else:
-                                    # Normal driving conditions - combine all systems
+                                    # Normal driving conditions - use RL agent
                                     try:
                                         action = self.rl_agent.select_action(state)
                                         throttle_level = action // 3
                                         steer_level = action % 3
                                         
-                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
-                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
-                                        control.brake = brake
+                                        control.throttle = [0.0, 0.5, 1.0][throttle_level]
+                                        control.steer = [-0.5, 0.0, 0.5][steer_level]
+                                        control.brake = 0.0
+                                        
+                                        # Calculate reward and update RL agent
+                                        reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
+                                        next_state = self.rl_agent.get_state(self.vehicle, self.world)
+                                        self.rl_agent.remember(state, action, reward, next_state, False)
+                                        loss = self.rl_agent.train()
+                                        
+                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f}")
                                     except Exception as e:
-                                        print(f"Error selecting RL action: {e}")
-                                        raise
+                                        print(f"Error in RL agent: {e}")
+                                        # Fall back to obstacle avoidance if RL fails
+                                        control.throttle = throttle
+                                        control.steer = steer
+                                        control.brake = brake
                                 
                                 # Apply control to vehicle
                                 try:
