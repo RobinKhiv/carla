@@ -710,14 +710,18 @@ class CarlaSimulator:
                                                 control.brake = brake
                                                 print(f"\nRL+ML: RL-guided navigation at {distance_to_pedestrian:.1f}m")
                                         
-                                        # Update RL agent with experience
-                                        reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
-                                        next_state = self.rl_agent.get_state(self.vehicle, self.world)
-                                        self.rl_agent.remember(state, action, reward, next_state, False)
-                                        loss = self.rl_agent.train()
-                                        
                                         # Print RL agent status
                                         print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
+                                        
+                                        # Store experience and train
+                                        try:
+                                            self.rl_agent.remember(state, action, reward, next_state, False)
+                                            loss = self.rl_agent.train()
+                                            if loss is not None:
+                                                print(f"\nTraining Loss: {loss:.4f}")
+                                        except Exception as e:
+                                            print(f"Error in RL training: {e}")
+                                            loss = None
                                     except Exception as e:
                                         print(f"Error in RL+ML navigation: {e}")
                                         # Fall back to obstacle avoidance if RL+ML fails

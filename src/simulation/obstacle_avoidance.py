@@ -102,6 +102,7 @@ class ObstacleAvoidance:
         
         # Train the model
         num_epochs = 1000
+        print("\nTraining obstacle avoidance model...")
         for epoch in range(num_epochs):
             # Forward pass
             self.optimizer.zero_grad()
@@ -113,7 +114,9 @@ class ObstacleAvoidance:
             self.optimizer.step()
             
             if (epoch + 1) % 100 == 0:
-                print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+                print(f'Progress: [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+        
+        print("Obstacle avoidance model training complete")
         
         # Add to experience buffer
         for i in range(len(X)):
