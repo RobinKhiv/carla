@@ -696,15 +696,15 @@ class CarlaSimulator:
                                     if next_waypoints:
                                         # Find the best waypoint to avoid the pedestrian
                                         best_waypoint = None
-                                        min_pedestrian_distance = float('inf')
+                                        max_pedestrian_distance = 0.0  # Changed from min_pedestrian_distance
                                         
                                         for waypoint in next_waypoints:
                                             # Calculate distance from waypoint to pedestrian
                                             waypoint_location = waypoint.transform.location
                                             pedestrian_distance = waypoint_location.distance(pedestrian_location)
                                             
-                                            if pedestrian_distance < min_pedestrian_distance:
-                                                min_pedestrian_distance = pedestrian_distance
+                                            if pedestrian_distance > max_pedestrian_distance:  # Changed from < to >
+                                                max_pedestrian_distance = pedestrian_distance
                                                 best_waypoint = waypoint
                                         
                                         if best_waypoint:
@@ -722,7 +722,7 @@ class CarlaSimulator:
                                             control.throttle = (0.8 + obstacle_control['throttle']) / 2
                                             control.brake = obstacle_control['brake']
                                             
-                                            print(f"\nNavigating around pedestrian at {min_pedestrian_distance:.1f}m")
+                                            print(f"\nNavigating around pedestrian at {max_pedestrian_distance:.1f}m")
                                         else:
                                             # If no good waypoint found, use combined RL and obstacle avoidance
                                             action = self.rl_agent.select_action(state)
