@@ -48,53 +48,53 @@ class ObstacleAvoidance:
         X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, no obstacles
         y.append([0.1, 0.0, 0.0])  # throttle, brake, steer
         
-        # Case 4: Vehicle ahead
+        # Case 4: Vehicle ahead - overtake left
         X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, vehicle close
-        y.append([0.0, 0.3, 0.0])  # throttle, brake, steer
+        y.append([0.4, 0.0, -0.6])  # throttle, brake, steer left for overtake
         
-        # Case 5: Pedestrian directly ahead - steer left
-        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian ahead
-        y.append([0.2, 0.3, -0.5])  # throttle, brake, steer left
+        # Case 5: Vehicle ahead - overtake right
+        X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, vehicle close
+        y.append([0.4, 0.0, 0.6])  # throttle, brake, steer right for overtake
         
-        # Case 6: Pedestrian directly ahead - steer right
-        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian ahead
-        y.append([0.2, 0.3, 0.5])  # throttle, brake, steer right
+        # Case 6: Vehicle ahead with space on left
+        X.append([0.5, 0.2, -0.3, 0.0, 0.0])  # medium speed, vehicle ahead, space left
+        y.append([0.3, 0.0, -0.5])  # throttle, brake, steer left
         
-        # Case 7: Pedestrian slightly left - steer right
-        X.append([0.5, 0.3, -0.3, 0.0, 1.0])  # medium speed, pedestrian left
-        y.append([0.2, 0.2, 0.4])  # throttle, brake, steer right
+        # Case 7: Vehicle ahead with space on right
+        X.append([0.5, 0.2, 0.3, 0.0, 0.0])  # medium speed, vehicle ahead, space right
+        y.append([0.3, 0.0, 0.5])  # throttle, brake, steer right
         
-        # Case 8: Pedestrian slightly right - steer left
-        X.append([0.5, 0.3, 0.3, 0.0, 1.0])  # medium speed, pedestrian right
-        y.append([0.2, 0.2, -0.4])  # throttle, brake, steer left
+        # Case 8: Slow vehicle ahead - aggressive overtake
+        X.append([0.7, 0.2, 0.0, 0.0, 0.0])  # high speed, slow vehicle ahead
+        y.append([0.5, 0.0, -0.7])  # throttle, brake, aggressive steer left
         
-        # Case 9: Multiple pedestrians ahead - steer left
-        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, multiple pedestrians
-        y.append([0.1, 0.4, -0.6])  # throttle, brake, steer left
+        # Case 9: Slow vehicle ahead - aggressive overtake
+        X.append([0.7, 0.2, 0.0, 0.0, 0.0])  # high speed, slow vehicle ahead
+        y.append([0.5, 0.0, 0.7])  # throttle, brake, aggressive steer right
         
-        # Case 10: Multiple pedestrians ahead - steer right
-        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, multiple pedestrians
-        y.append([0.1, 0.4, 0.6])  # throttle, brake, steer right
+        # Case 10: Multiple vehicles ahead - find gap
+        X.append([0.5, 0.2, 0.0, 0.3, 0.0])  # medium speed, multiple vehicles
+        y.append([0.3, 0.0, -0.4])  # throttle, brake, steer left to find gap
         
-        # Case 11: High speed with pedestrian - emergency steer
-        X.append([0.8, 0.2, 0.0, 0.0, 1.0])  # high speed, pedestrian close
-        y.append([0.0, 0.6, -0.8])  # throttle, brake, steer left
+        # Case 11: Multiple vehicles ahead - find gap
+        X.append([0.5, 0.2, 0.0, 0.3, 0.0])  # medium speed, multiple vehicles
+        y.append([0.3, 0.0, 0.4])  # throttle, brake, steer right to find gap
         
-        # Case 12: High speed with pedestrian - emergency steer
-        X.append([0.8, 0.2, 0.0, 0.0, 1.0])  # high speed, pedestrian close
-        y.append([0.0, 0.6, 0.8])  # throttle, brake, steer right
+        # Case 12: High speed with vehicle ahead - emergency overtake
+        X.append([0.8, 0.2, 0.0, 0.0, 0.0])  # high speed, vehicle close
+        y.append([0.4, 0.0, -0.8])  # throttle, brake, emergency steer left
         
-        # Case 13: Pedestrian crossing from left - steer right
-        X.append([0.4, 0.3, -0.4, 0.0, 1.0])  # medium speed, pedestrian left
-        y.append([0.1, 0.3, 0.5])  # throttle, brake, steer right
+        # Case 13: High speed with vehicle ahead - emergency overtake
+        X.append([0.8, 0.2, 0.0, 0.0, 0.0])  # high speed, vehicle close
+        y.append([0.4, 0.0, 0.8])  # throttle, brake, emergency steer right
         
-        # Case 14: Pedestrian crossing from right - steer left
-        X.append([0.4, 0.3, 0.4, 0.0, 1.0])  # medium speed, pedestrian right
-        y.append([0.1, 0.3, -0.5])  # throttle, brake, steer left
+        # Case 14: Vehicle blocking lane - find alternative
+        X.append([0.6, 0.2, 0.3, 0.0, 0.0])  # medium-high speed, blocked lane
+        y.append([0.3, 0.0, -0.6])  # throttle, brake, steer left to change lane
         
-        # Case 15: Complex scenario with multiple pedestrians
-        X.append([0.6, 0.2, 0.3, 0.0, 1.0])  # medium-high speed, multiple pedestrians
-        y.append([0.1, 0.4, -0.7])  # throttle, brake, steer left
+        # Case 15: Vehicle blocking lane - find alternative
+        X.append([0.6, 0.2, -0.3, 0.0, 0.0])  # medium-high speed, blocked lane
+        y.append([0.3, 0.0, 0.6])  # throttle, brake, steer right to change lane
         
         # Convert to tensors
         X = torch.FloatTensor(X)
