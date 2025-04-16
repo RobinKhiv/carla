@@ -513,8 +513,6 @@ class CarlaSimulator:
                         vehicle_velocity = self.vehicle.get_velocity()
                         # Calculate speed in km/h using CARLA's velocity vector
                         speed = 3.6 * math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)
-                        print(f"\n[DEBUG] Raw Velocity: x={vehicle_velocity.x:.2f}, y={vehicle_velocity.y:.2f}, z={vehicle_velocity.z:.2f}")
-                        print(f"[DEBUG] Calculated Speed: {speed:.2f} km/h")
                     except Exception as e:
                         print(f"Error getting vehicle state: {e}")
                         raise
@@ -574,31 +572,58 @@ class CarlaSimulator:
                                 # Get obstacle avoidance predictions
                                 try:
                                     obstacles = self.detect_obstacles()
-                                    print(f"\n[DEBUG] ML Obstacles: {len(obstacles)}")
-                                except Exception as e:
-                                    print(f"Error detecting obstacles: {e}")
-                                    raise
-                                
-                                # Get next waypoint location
-                                next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
-                                next_waypoint_location = next_waypoint.transform.location
-                                
-                                # Convert vehicle velocity to scalar speed in km/h
-                                vehicle_speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6
-                                
-                                # Get obstacle avoidance control values
-                                try:
+                                    print(f"\n[ML] Detected {len(obstacles)} obstacles")
+                                    
+                                    # Get ML control predictions
                                     throttle, brake, steer = self.obstacle_avoidance.predict_control(
                                         np.array([vehicle_location.x, vehicle_location.y, vehicle_location.z]),
-                                        vehicle_speed,
+                                        speed,
                                         np.array([0, self.vehicle.get_transform().rotation.yaw, 0]),
                                         obstacles,
-                                        np.array([next_waypoint_location.x, next_waypoint_location.y, next_waypoint_location.z])
+                                        np.array([next_waypoint.transform.location.x, next_waypoint.transform.location.y, next_waypoint.transform.location.z])
                                     )
-                                    print(f"\n[DEBUG] ML Control: throttle={throttle:.2f}, brake={brake:.2f}, steer={steer:.2f}")
+                                    print(f"[ML] Control: throttle={throttle:.2f}, brake={brake:.2f}, steer={steer:.2f}")
                                 except Exception as e:
-                                    print(f"Error getting obstacle avoidance control: {e}")
-                                    raise
+                                    print(f"Error in ML prediction: {e}")
+                                
+                                # Get RL agent state and action
+                                try:
+                                    state = self.rl_agent.get_state(self.vehicle, self.world)
+                                    action = self.rl_agent.select_action(state)
+                                    print(f"[RL] State: speed={state[0]:.2f}, actors={state[1]:.2f}, traffic_light={state[2]:.2f}")
+                                    print(f"[RL] Action: {action}")
+                                    
+                                    # Train RL agent
+                                    next_state = self.rl_agent.get_state(self.vehicle, self.world)
+                                    reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
+                                    self.rl_agent.remember(state, action, reward, next_state, False)
+                                    loss = self.rl_agent.train()
+                                    if loss is not None:
+                                        print(f"[RL] Training loss: {loss:.4f}")
+                                except Exception as e:
+                                    print(f"Error in RL agent: {e}")
+                                
+                                # Combine ML and RL controls
+                                try:
+                                    # Use ML for obstacle avoidance and RL for high-level decisions
+                                    if len(obstacles) > 0:
+                                        control.throttle = throttle
+                                        control.brake = brake
+                                        control.steer = steer
+                                    else:
+                                        # Use RL action for normal driving
+                                        if action == 0:  # Accelerate
+                                            control.throttle = 0.5
+                                            control.brake = 0.0
+                                        elif action == 1:  # Brake
+                                            control.throttle = 0.0
+                                            control.brake = 0.5
+                                        elif action == 2:  # Steer left
+                                            control.steer = -0.5
+                                        elif action == 3:  # Steer right
+                                            control.steer = 0.5
+                                except Exception as e:
+                                    print(f"Error combining controls: {e}")
                                 
                                 # Check traffic light state
                                 try:
@@ -611,23 +636,19 @@ class CarlaSimulator:
                                     
                                     if traffic_light:
                                         light_state = traffic_light.get_state()
-                                        print(f"\n[DEBUG] Traffic Light State: {light_state}")
                                         
                                         # Handle traffic light states
                                         if light_state == carla.TrafficLightState.Red:
                                             control.throttle = 0.0
                                             control.brake = 1.0
-                                            print("[DEBUG] Stopping for red light")
                                         elif light_state == carla.TrafficLightState.Yellow:
                                             control.throttle = 0.0
                                             control.brake = 0.5
-                                            print("[DEBUG] Slowing for yellow light")
                                         elif light_state == carla.TrafficLightState.Green:
                                             # Resume normal control
                                             if speed < 5.0:
                                                 control.throttle = 0.5
                                                 control.brake = 0.0
-                                                print("[DEBUG] Accelerating from green light")
                                 except Exception as e:
                                     print(f"Error checking traffic light: {e}")
                                 
@@ -636,26 +657,14 @@ class CarlaSimulator:
                                     if speed < 5.0 and control.throttle < 0.3:
                                         control.throttle = 0.3
                                         control.brake = 0.0
-                                        print("[DEBUG] Applying minimum throttle for movement")
                                 except Exception as e:
                                     print(f"Error in speed control: {e}")
                                 
                                 # Print vehicle state with safe formatting
                                 try:
-                                    speed_str = str(speed) if speed is not None else "N/A"
-                                    x_str = str(vehicle_location.x) if vehicle_location is not None else "N/A"
-                                    y_str = str(vehicle_location.y) if vehicle_location is not None else "N/A"
-                                    throttle_str = str(control.throttle) if control is not None else "N/A"
-                                    brake_str = str(control.brake) if control is not None else "N/A"
-                                    steer_str = str(control.steer) if control is not None else "N/A"
-                                    epsilon_str = str(self.rl_agent.epsilon) if self.rl_agent is not None else "N/A"
-                                    loss_str = str(loss) if loss is not None else "N/A"
-                                    
-                                    print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
-                                          f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
-                                          f"Throttle: {throttle_str}, Brake: {brake_str}, "
-                                          f"Steering: {steer_str}, Epsilon: {epsilon_str}, "
-                                          f"Loss: {loss_str}", end="")
+                                    print(f"\rSpeed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
+                                          f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
+                                          f"Steering: {control.steer:.2f}", end="")
                                 except Exception as e:
                                     print(f"Error printing vehicle state: {e}")
                                 
