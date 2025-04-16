@@ -326,8 +326,8 @@ class CarlaSimulator:
                     return False
                 
                 # Spawn pedestrians in downtown areas
-                num_sections = 5  # Reduced from 20 to 5 sections
-                pedestrians_per_section = 3  # Reduced from 5 to 3 pedestrians per section
+                num_sections = 5  # 5 different downtown sections
+                pedestrians_per_section = 2  # Reduced to 2 pedestrians per section
                 
                 for section in range(num_sections):
                     print(f"\nAttempting to spawn pedestrians in section {section + 1}")
@@ -340,23 +340,26 @@ class CarlaSimulator:
                     
                     # Try different spawn points in this section
                     for i in range(pedestrians_per_section):
-                        # Try different offsets
-                        for offset in [-2.0, -1.0, 0.0, 1.0, 2.0]:  # Smaller offsets for downtown
-                            spawn_point = carla.Transform()
-                            spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 3.0)  # Increased spacing to 3m
-                            spawn_point.location.z += 0.5
-                            
-                            if try_spawn_pedestrian(spawn_point, waypoint):
-                                break  # Move to next pedestrian if successful
+                        # Try different offsets, but ensure we don't block both sides
+                        # Alternate between left and right side of the road
+                        side = 1 if i % 2 == 0 else -1
+                        offset = side * 2.0  # Fixed 2m offset from center
+                        
+                        spawn_point = carla.Transform()
+                        spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 5.0)  # Increased spacing to 5m
+                        spawn_point.location.z += 0.5
+                        
+                        if try_spawn_pedestrian(spawn_point, waypoint):
+                            print(f"Spawned pedestrian on {'right' if side > 0 else 'left'} side of road")
                     
                     # Move to next waypoint for next section
-                    next_waypoints = waypoint.next(30.0)  # Increased to 30m between sections
+                    next_waypoints = waypoint.next(50.0)  # Increased to 50m between sections
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
                 # Additional random pedestrian spawning in downtown
                 print("\nAttempting additional random pedestrian spawning in downtown...")
-                for _ in range(10):  # Reduced from 50 to 10 additional pedestrians
+                for _ in range(5):  # Reduced to 5 additional pedestrians
                     waypoint = random.choice(downtown_waypoints)
                     spawn_location = waypoint.transform.location
                     
@@ -364,17 +367,19 @@ class CarlaSimulator:
                     road_direction = waypoint.transform.get_forward_vector()
                     perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
                     
-                    # Try different offsets
-                    for offset in [-2.0, -1.0, 0.0, 1.0, 2.0]:  # Smaller offsets for downtown
-                        spawn_point = carla.Transform()
-                        spawn_point.location = spawn_location + perpendicular * offset
-                        spawn_point.location.z += 0.5
-                        
-                        if try_spawn_pedestrian(spawn_point, waypoint):
-                            break  # Move to next attempt if successful
+                    # Choose one side of the road randomly
+                    side = 1 if random.random() > 0.5 else -1
+                    offset = side * 2.0  # Fixed 2m offset from center
+                    
+                    spawn_point = carla.Transform()
+                    spawn_point.location = spawn_location + perpendicular * offset
+                    spawn_point.location.z += 0.5
+                    
+                    if try_spawn_pedestrian(spawn_point, waypoint):
+                        print(f"Spawned random pedestrian on {'right' if side > 0 else 'left'} side of road")
                     
                     # Move to next waypoint
-                    next_waypoints = waypoint.next(15.0)  # Increased to 15m between random spawns
+                    next_waypoints = waypoint.next(30.0)  # Increased to 30m between random spawns
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
