@@ -746,12 +746,19 @@ class CarlaSimulator:
                                                 cross_product = vehicle_forward.cross(waypoint_direction)
                                                 steering_angle = float(math.asin(cross_product.z))
                                                 
-                                                # Combine controls from all systems
-                                                control.steer = (steering_angle + steer) / 2
-                                                control.throttle = (0.8 + throttle) / 2
-                                                control.brake = brake
+                                                # More aggressive avoidance when pedestrian is close
+                                                if distance_to_pedestrian < 10.0:
+                                                    # Stronger steering and braking when pedestrian is close
+                                                    control.steer = steering_angle * 1.5  # Increase steering
+                                                    control.throttle = 0.2  # Reduce speed
+                                                    control.brake = 0.3  # Apply some brake
+                                                else:
+                                                    # Normal avoidance when pedestrian is further
+                                                    control.steer = steering_angle
+                                                    control.throttle = 0.5
+                                                    control.brake = 0.1
                                                 
-                                                print(f"\nNavigating around pedestrian at {max_pedestrian_distance:.1f}m")
+                                                print(f"\nNavigating around pedestrian at {distance_to_pedestrian:.1f}m")
                                             else:
                                                 # If no good waypoint found, use combined RL and obstacle avoidance
                                                 try:
@@ -760,9 +767,15 @@ class CarlaSimulator:
                                                     throttle_level = action // 3
                                                     steer_level = action % 3
                                                     
-                                                    control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
-                                                    control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
-                                                    control.brake = brake
+                                                    # More conservative controls when pedestrian is close
+                                                    if distance_to_pedestrian < 10.0:
+                                                        control.throttle = 0.2
+                                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                        control.brake = 0.3
+                                                    else:
+                                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
+                                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                        control.brake = brake
                                                 except Exception as e:
                                                     print(f"Error selecting RL action: {e}")
                                                     raise
@@ -774,9 +787,15 @@ class CarlaSimulator:
                                                 throttle_level = action // 3
                                                 steer_level = action % 3
                                                 
-                                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
-                                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
-                                                control.brake = brake
+                                                # More conservative controls when pedestrian is close
+                                                if distance_to_pedestrian < 10.0:
+                                                    control.throttle = 0.2
+                                                    control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                    control.brake = 0.3
+                                                else:
+                                                    control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
+                                                    control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                    control.brake = brake
                                             except Exception as e:
                                                 print(f"Error selecting RL action: {e}")
                                                 raise
