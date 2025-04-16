@@ -696,14 +696,14 @@ class CarlaSimulator:
                                     if next_waypoints:
                                         # Find the best waypoint to avoid the pedestrian
                                         best_waypoint = None
-                                        max_pedestrian_distance = 0.0  # Changed from min_pedestrian_distance
+                                        max_pedestrian_distance = 0.0
                                         
                                         for waypoint in next_waypoints:
                                             # Calculate distance from waypoint to pedestrian
                                             waypoint_location = waypoint.transform.location
-                                            pedestrian_distance = waypoint_location.distance(pedestrian_location)
+                                            pedestrian_distance = float(waypoint_location.distance(pedestrian_location))
                                             
-                                            if pedestrian_distance > max_pedestrian_distance:  # Changed from < to >
+                                            if pedestrian_distance > max_pedestrian_distance:
                                                 max_pedestrian_distance = pedestrian_distance
                                                 best_waypoint = waypoint
                                         
@@ -715,12 +715,12 @@ class CarlaSimulator:
                                             # Calculate steering angle
                                             vehicle_forward = self.vehicle.get_transform().get_forward_vector()
                                             cross_product = vehicle_forward.cross(waypoint_direction)
-                                            steering_angle = math.asin(cross_product.z)
+                                            steering_angle = float(math.asin(cross_product.z))
                                             
                                             # Combine controls from all systems
-                                            control.steer = (steering_angle + obstacle_control['steer']) / 2
-                                            control.throttle = (0.8 + obstacle_control['throttle']) / 2
-                                            control.brake = obstacle_control['brake']
+                                            control.steer = (steering_angle + float(obstacle_control['steer'])) / 2
+                                            control.throttle = (0.8 + float(obstacle_control['throttle'])) / 2
+                                            control.brake = float(obstacle_control['brake'])
                                             
                                             print(f"\nNavigating around pedestrian at {max_pedestrian_distance:.1f}m")
                                         else:
