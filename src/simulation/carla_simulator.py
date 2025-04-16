@@ -648,7 +648,7 @@ class CarlaSimulator:
                             # Check for pedestrians in front
                             pedestrian_in_path = False
                             pedestrian_location = None
-                            current_pedestrian_distance = float('inf')  # Initialize with a large value
+                            distance_to_pedestrian = float('inf')  # Initialize with a large value
                             
                             for actor in nearby_actors.filter('walker.*'):
                                 actor_location = actor.get_location()
@@ -664,7 +664,7 @@ class CarlaSimulator:
                                     if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
                                         pedestrian_in_path = True
                                         pedestrian_location = actor_location
-                                        current_pedestrian_distance = distance  # Store the float distance
+                                        distance_to_pedestrian = distance  # Store the float distance
                                         break
                             
                             # Get control from traffic manager
@@ -680,7 +680,7 @@ class CarlaSimulator:
                             next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
                             next_waypoint_location = next_waypoint.transform.location
                             
-                            obstacle_control = self.obstacle_avoidance.predict_control(
+                            throttle, brake, steer = self.obstacle_avoidance.predict_control(
                                 vehicle_location,
                                 vehicle_velocity,
                                 self.vehicle.get_transform().rotation,
@@ -721,9 +721,9 @@ class CarlaSimulator:
                                             steering_angle = float(math.asin(cross_product.z))
                                             
                                             # Combine controls from all systems
-                                            control.steer = (steering_angle + float(obstacle_control['steer'])) / 2
-                                            control.throttle = (0.8 + float(obstacle_control['throttle'])) / 2
-                                            control.brake = float(obstacle_control['brake'])
+                                            control.steer = (steering_angle + steer) / 2
+                                            control.throttle = (0.8 + throttle) / 2
+                                            control.brake = brake
                                             
                                             print(f"\nNavigating around pedestrian at {max_pedestrian_distance:.1f}m")
                                         else:
@@ -733,9 +733,9 @@ class CarlaSimulator:
                                             throttle_level = action // 3
                                             steer_level = action % 3
                                             
-                                            control.throttle = ([0.0, 0.5, 1.0][throttle_level] + float(obstacle_control['throttle'])) / 2
-                                            control.steer = ([-0.5, 0.0, 0.5][steer_level] + float(obstacle_control['steer'])) / 2
-                                            control.brake = float(obstacle_control['brake'])
+                                            control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
+                                            control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                            control.brake = brake
                                     else:
                                         # If no waypoints found, use combined RL and obstacle avoidance
                                         action = self.rl_agent.select_action(state)
@@ -743,18 +743,18 @@ class CarlaSimulator:
                                         throttle_level = action // 3
                                         steer_level = action % 3
                                         
-                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + float(obstacle_control['throttle'])) / 2
-                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + float(obstacle_control['steer'])) / 2
-                                        control.brake = float(obstacle_control['brake'])
+                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
+                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                        control.brake = brake
                             else:
                                 # Normal driving conditions - combine all systems
                                 action = self.rl_agent.select_action(state)
                                 throttle_level = action // 3
                                 steer_level = action % 3
                                 
-                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + float(obstacle_control['throttle'])) / 2
-                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + float(obstacle_control['steer'])) / 2
-                                control.brake = float(obstacle_control['brake'])
+                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
+                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                control.brake = brake
                             
                             # Apply control to vehicle
                             self.vehicle.apply_control(control)
@@ -766,7 +766,7 @@ class CarlaSimulator:
                             reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
                             
                             # Additional reward for successful pedestrian avoidance
-                            if pedestrian_in_path and current_pedestrian_distance > 5.0:
+                            if pedestrian_in_path and distance_to_pedestrian > 5.0:
                                 reward += 0.5  # Reward for finding a clear path around pedestrian
                             
                             total_reward += reward
