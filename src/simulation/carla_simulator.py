@@ -511,7 +511,10 @@ class CarlaSimulator:
                     try:
                         vehicle_location = self.vehicle.get_location()
                         vehicle_velocity = self.vehicle.get_velocity()
-                        speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6  # Convert to km/h
+                        # Calculate speed in km/h using CARLA's velocity vector
+                        speed = 3.6 * math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2)
+                        print(f"\n[DEBUG] Raw Velocity: x={vehicle_velocity.x:.2f}, y={vehicle_velocity.y:.2f}, z={vehicle_velocity.z:.2f}")
+                        print(f"[DEBUG] Calculated Speed: {speed:.2f} km/h")
                     except Exception as e:
                         print(f"Error getting vehicle state: {e}")
                         raise
@@ -597,229 +600,64 @@ class CarlaSimulator:
                                     print(f"Error getting obstacle avoidance control: {e}")
                                     raise
                                 
-                                if pedestrian_in_path and pedestrian_location:
-                                    try:
-                                        # Get RL agent's action
-                                        action = self.rl_agent.select_action(state)
-                                        print(f"\n[DEBUG] RL Action: {action}")
+                                # Check traffic light state
+                                try:
+                                    # Get the traffic light affecting the vehicle
+                                    traffic_light = None
+                                    for actor in self.world.get_actors().filter('traffic.traffic_light'):
+                                        if actor.get_location().distance(vehicle_location) < 30.0:  # Check within 30 meters
+                                            traffic_light = actor
+                                            break
+                                    
+                                    if traffic_light:
+                                        light_state = traffic_light.get_state()
+                                        print(f"\n[DEBUG] Traffic Light State: {light_state}")
                                         
-                                        throttle_level = action // 3
-                                        steer_level = action % 3
-                                        
-                                        # Convert RL action to control values
-                                        rl_throttle = [0.0, 0.5, 1.0][throttle_level]
-                                        rl_steer = [-0.5, 0.0, 0.5][steer_level]
-                                        print(f"\n[DEBUG] RL Control: throttle={rl_throttle:.2f}, steer={rl_steer:.2f}")
-                                        
-                                        # Check for available space using ML
-                                        current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
-                                        left_lane = current_waypoint.get_left_lane()
-                                        right_lane = current_waypoint.get_right_lane()
-                                        
-                                        # Use ML to evaluate available spaces
-                                        available_space = []
-                                        if left_lane and left_lane.lane_type == carla.LaneType.Driving:
-                                            left_lane_location = left_lane.transform.location
-                                            left_lane_clear = self.obstacle_avoidance.evaluate_space(
-                                                np.array([left_lane_location.x, left_lane_location.y, left_lane_location.z]),
-                                                vehicle_speed,
-                                                obstacles
-                                            )
-                                            if left_lane_clear:
-                                                available_space.append(('left', left_lane))
-                                                print("\n[DEBUG] ML: Left lane available")
-                                        
-                                        if right_lane and right_lane.lane_type == carla.LaneType.Driving:
-                                            right_lane_location = right_lane.transform.location
-                                            right_lane_clear = self.obstacle_avoidance.evaluate_space(
-                                                np.array([right_lane_location.x, right_lane_location.y, right_lane_location.z]),
-                                                vehicle_speed,
-                                                obstacles
-                                            )
-                                            if right_lane_clear:
-                                                available_space.append(('right', right_lane))
-                                                print("\n[DEBUG] ML: Right lane available")
-                                        
-                                        # Combine RL decisions with space evaluation
-                                        if available_space:
-                                            # Choose best space using ML evaluation
-                                            best_lane = None
-                                            best_score = float('-inf')
-                                            
-                                            for direction, lane in available_space:
-                                                lane_location = lane.transform.location
-                                                space_score = self.obstacle_avoidance.score_space(
-                                                    np.array([lane_location.x, lane_location.y, lane_location.z]),
-                                                    np.array([pedestrian_location.x, pedestrian_location.y, pedestrian_location.z]),
-                                                    vehicle_speed
-                                                )
-                                                if space_score > best_score:
-                                                    best_score = space_score
-                                                    best_lane = (direction, lane)
-                                            
-                                            if best_lane:
-                                                direction, target_lane = best_lane
-                                                target_location = target_lane.transform.location
-                                                
-                                                # Calculate steering for lane change
-                                                target_direction = target_location - vehicle_location
-                                                target_direction = target_direction.make_unit_vector()
-                                                vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                                                target_cross = vehicle_forward.cross(target_direction)
-                                                cross_z = max(-1.0, min(1.0, target_cross.z))
-                                                ml_steer = float(math.asin(cross_z))
-                                                
-                                                # Blend RL and ML controls based on distance to pedestrian
-                                                if distance_to_pedestrian < 10.0:
-                                                    # Close to pedestrian: More aggressive ML-based navigation
-                                                    control.throttle = (rl_throttle * 0.3 + throttle * 0.7)
-                                                    control.steer = (rl_steer * 0.3 + ml_steer * 1.5 * 0.7)
-                                                    control.brake = brake
-                                                    print(f"\nRL+ML: Aggressive navigation through {direction} lane at {distance_to_pedestrian:.1f}m")
-                                                else:
-                                                    # Further from pedestrian: Balanced RL and ML control
-                                                    control.throttle = (rl_throttle * 0.5 + throttle * 0.5)
-                                                    control.steer = (rl_steer * 0.5 + ml_steer * 0.5)
-                                                    control.brake = brake
-                                                    print(f"\nRL+ML: Preparing navigation through {direction} lane")
-                                        else:
-                                            # No available space: Use RL with obstacle avoidance
-                                            if distance_to_pedestrian < 15.0:
-                                                # Close to pedestrian: More conservative control
-                                                control.throttle = (rl_throttle * 0.2 + throttle * 0.8)
-                                                control.steer = (rl_steer * 0.2 + steer * 0.8)
-                                                control.brake = brake
-                                                print(f"\nRL+ML: Maintaining safe distance at {distance_to_pedestrian:.1f}m")
-                                            else:
-                                                # Further from pedestrian: More RL influence
-                                                control.throttle = (rl_throttle * 0.7 + throttle * 0.3)
-                                                control.steer = (rl_steer * 0.7 + steer * 0.3)
-                                                control.brake = brake
-                                                print(f"\nRL+ML: RL-guided navigation at {distance_to_pedestrian:.1f}m")
-                                        
-                                        # Store experience and train
-                                        try:
-                                            reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
-                                            next_state = self.rl_agent.get_state(self.vehicle, self.world)
-                                            self.rl_agent.remember(state, action, reward, next_state, False)
-                                            loss = self.rl_agent.train()
-                                            if loss is not None:
-                                                print(f"\nTraining Loss: {loss:.4f}")
-                                        except Exception as e:
-                                            print(f"Error in RL training: {e}")
-                                            loss = None
-                                            reward = 0.0
-                                        
-                                        # Print RL agent status with safe formatting
-                                        try:
-                                            action_str = str(action) if action is not None else "N/A"
-                                            reward_str = str(reward) if reward is not None else "N/A"
-                                            loss_str = str(loss) if loss is not None else "N/A"
-                                            print(f"\nRL Agent: Action={action_str}, Reward={reward_str}, Loss={loss_str}")
-                                        except Exception as e:
-                                            print(f"Error printing RL agent status: {e}")
-                                        
-                                        # Print vehicle state with safe formatting
-                                        try:
-                                            speed_str = str(speed) if speed is not None else "N/A"
-                                            x_str = str(vehicle_location.x) if vehicle_location is not None else "N/A"
-                                            y_str = str(vehicle_location.y) if vehicle_location is not None else "N/A"
-                                            throttle_str = str(control.throttle) if control is not None else "N/A"
-                                            brake_str = str(control.brake) if control is not None else "N/A"
-                                            steer_str = str(control.steer) if control is not None else "N/A"
-                                            epsilon_str = str(self.rl_agent.epsilon) if self.rl_agent is not None else "N/A"
-                                            loss_str = str(loss) if loss is not None else "N/A"
-                                            
-                                            print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
-                                                  f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
-                                                  f"Throttle: {throttle_str}, Brake: {brake_str}, "
-                                                  f"Steering: {steer_str}, Epsilon: {epsilon_str}, "
-                                                  f"Loss: {loss_str}", end="")
-                                        except Exception as e:
-                                            print(f"Error printing vehicle state: {e}")
-                                        
-                                        # Debug speed control
-                                        try:
-                                            print(f"\n[DEBUG] Speed Control:")
-                                            print(f"Current Speed: {vehicle_speed:.2f} km/h")
-                                            print(f"Throttle: {control.throttle:.2f}")
-                                            print(f"Brake: {control.brake:.2f}")
-                                            print(f"Vehicle Velocity: x={vehicle_velocity.x:.2f}, y={vehicle_velocity.y:.2f}, z={vehicle_velocity.z:.2f}")
-                                            
-                                            # Ensure minimum throttle for movement
-                                            if vehicle_speed < 5.0 and control.throttle < 0.3:
-                                                control.throttle = 0.3
+                                        # Handle traffic light states
+                                        if light_state == carla.TrafficLightState.Red:
+                                            control.throttle = 0.0
+                                            control.brake = 1.0
+                                            print("[DEBUG] Stopping for red light")
+                                        elif light_state == carla.TrafficLightState.Yellow:
+                                            control.throttle = 0.0
+                                            control.brake = 0.5
+                                            print("[DEBUG] Slowing for yellow light")
+                                        elif light_state == carla.TrafficLightState.Green:
+                                            # Resume normal control
+                                            if speed < 5.0:
+                                                control.throttle = 0.5
                                                 control.brake = 0.0
-                                                print("[DEBUG] Applying minimum throttle for movement")
-                                        except Exception as e:
-                                            print(f"Error in speed control debugging: {e}")
-                                        
-                                        # Apply control to vehicle
-                                        try:
-                                            self.vehicle.apply_control(control)
-                                        except Exception as e:
-                                            print(f"Error applying control: {e}")
-                                            raise
-                                    except Exception as e:
-                                        print(f"Error in RL+ML navigation: {e}")
-                                        # Fall back to obstacle avoidance if RL+ML fails
-                                        control.throttle = throttle
-                                        control.steer = steer
-                                        control.brake = brake
-                                else:
-                                    # Normal driving conditions - use RL agent
-                                    try:
-                                        action = self.rl_agent.select_action(state)
-                                        throttle_level = action // 3
-                                        steer_level = action % 3
-                                        
-                                        control.throttle = [0.0, 0.5, 1.0][throttle_level]
-                                        control.steer = [-0.5, 0.0, 0.5][steer_level]
+                                                print("[DEBUG] Accelerating from green light")
+                                except Exception as e:
+                                    print(f"Error checking traffic light: {e}")
+                                
+                                # Ensure minimum movement
+                                try:
+                                    if speed < 5.0 and control.throttle < 0.3:
+                                        control.throttle = 0.3
                                         control.brake = 0.0
-                                        
-                                        # Store experience and train
-                                        try:
-                                            reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
-                                            next_state = self.rl_agent.get_state(self.vehicle, self.world)
-                                            self.rl_agent.remember(state, action, reward, next_state, False)
-                                            loss = self.rl_agent.train()
-                                            if loss is not None:
-                                                print(f"\nTraining Loss: {loss:.4f}")
-                                        except Exception as e:
-                                            print(f"Error in RL training: {e}")
-                                            loss = None
-                                            reward = 0.0
-                                        
-                                        # Print RL agent status with safe formatting
-                                        try:
-                                            print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
-                                        except Exception as e:
-                                            print(f"Error printing RL agent status: {e}")
-                                        
-                                        # Print vehicle state with safe formatting
-                                        try:
-                                            speed_str = str(speed) if speed is not None else "N/A"
-                                            x_str = str(vehicle_location.x) if vehicle_location is not None else "N/A"
-                                            y_str = str(vehicle_location.y) if vehicle_location is not None else "N/A"
-                                            throttle_str = str(control.throttle) if control is not None else "N/A"
-                                            brake_str = str(control.brake) if control is not None else "N/A"
-                                            steer_str = str(control.steer) if control is not None else "N/A"
-                                            epsilon_str = str(self.rl_agent.epsilon) if self.rl_agent is not None else "N/A"
-                                            loss_str = str(loss) if loss is not None else "N/A"
-                                            
-                                            print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
-                                                  f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
-                                                  f"Throttle: {throttle_str}, Brake: {brake_str}, "
-                                                  f"Steering: {steer_str}, Epsilon: {epsilon_str}, "
-                                                  f"Loss: {loss_str}", end="")
-                                        except Exception as e:
-                                            print(f"Error printing vehicle state: {e}")
-                                    except Exception as e:
-                                        print(f"Error in RL agent: {e}")
-                                        # Fall back to obstacle avoidance if RL fails
-                                        control.throttle = throttle
-                                        control.steer = steer
-                                        control.brake = brake
+                                        print("[DEBUG] Applying minimum throttle for movement")
+                                except Exception as e:
+                                    print(f"Error in speed control: {e}")
+                                
+                                # Print vehicle state with safe formatting
+                                try:
+                                    speed_str = str(speed) if speed is not None else "N/A"
+                                    x_str = str(vehicle_location.x) if vehicle_location is not None else "N/A"
+                                    y_str = str(vehicle_location.y) if vehicle_location is not None else "N/A"
+                                    throttle_str = str(control.throttle) if control is not None else "N/A"
+                                    brake_str = str(control.brake) if control is not None else "N/A"
+                                    steer_str = str(control.steer) if control is not None else "N/A"
+                                    epsilon_str = str(self.rl_agent.epsilon) if self.rl_agent is not None else "N/A"
+                                    loss_str = str(loss) if loss is not None else "N/A"
+                                    
+                                    print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
+                                          f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
+                                          f"Throttle: {throttle_str}, Brake: {brake_str}, "
+                                          f"Steering: {steer_str}, Epsilon: {epsilon_str}, "
+                                          f"Loss: {loss_str}", end="")
+                                except Exception as e:
+                                    print(f"Error printing vehicle state: {e}")
                                 
                                 # Apply control to vehicle
                                 try:
