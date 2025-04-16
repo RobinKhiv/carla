@@ -766,7 +766,7 @@ class CarlaSimulator:
                             reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
                             
                             # Additional reward for successful pedestrian avoidance
-                            if pedestrian_in_path and distance_to_pedestrian > 5.0:
+                            if pedestrian_in_path and hasattr(self, 'distance_to_pedestrian') and self.distance_to_pedestrian > 5.0:
                                 reward += 0.5  # Reward for finding a clear path around pedestrian
                             
                             total_reward += reward
