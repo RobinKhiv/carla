@@ -24,7 +24,6 @@ class CarlaSimulator:
             self.running = False
             self.traffic_manager = None
             self.initialized = False
-            self.obstacle_avoidance = ObstacleAvoidance()
             
             # Initialize reinforcement learning agent with ethical priorities
             ethical_priorities = EthicalPriorities(
@@ -95,20 +94,6 @@ class CarlaSimulator:
             # Initialize obstacle avoidance model
             print("Initializing obstacle avoidance model...")
             self.obstacle_avoidance = ObstacleAvoidance()
-            
-            # Initialize RL agent
-            print("Initializing RL agent...")
-            ethical_priorities = EthicalPriorities(
-                pedestrian_weight=1.0,
-                passenger_weight=1.0,
-                property_weight=0.5,
-                traffic_law_weight=0.8
-            )
-            self.rl_agent = RLEthicalAgent(
-                state_size=5,
-                action_size=9,
-                ethical_priorities=ethical_priorities
-            )
             
             print("Simulator initialized successfully")
             self.initialized = True
@@ -710,11 +695,10 @@ class CarlaSimulator:
                                                 control.brake = brake
                                                 print(f"\nRL+ML: RL-guided navigation at {distance_to_pedestrian:.1f}m")
                                         
-                                        # Print RL agent status
-                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
-                                        
                                         # Store experience and train
                                         try:
+                                            reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
+                                            next_state = self.rl_agent.get_state(self.vehicle, self.world)
                                             self.rl_agent.remember(state, action, reward, next_state, False)
                                             loss = self.rl_agent.train()
                                             if loss is not None:
@@ -722,6 +706,9 @@ class CarlaSimulator:
                                         except Exception as e:
                                             print(f"Error in RL training: {e}")
                                             loss = None
+                                        
+                                        # Print RL agent status
+                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
                                     except Exception as e:
                                         print(f"Error in RL+ML navigation: {e}")
                                         # Fall back to obstacle avoidance if RL+ML fails
@@ -739,11 +726,17 @@ class CarlaSimulator:
                                         control.steer = [-0.5, 0.0, 0.5][steer_level]
                                         control.brake = 0.0
                                         
-                                        # Calculate reward and update RL agent
-                                        reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
-                                        next_state = self.rl_agent.get_state(self.vehicle, self.world)
-                                        self.rl_agent.remember(state, action, reward, next_state, False)
-                                        loss = self.rl_agent.train()
+                                        # Store experience and train
+                                        try:
+                                            reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
+                                            next_state = self.rl_agent.get_state(self.vehicle, self.world)
+                                            self.rl_agent.remember(state, action, reward, next_state, False)
+                                            loss = self.rl_agent.train()
+                                            if loss is not None:
+                                                print(f"\nTraining Loss: {loss:.4f}")
+                                        except Exception as e:
+                                            print(f"Error in RL training: {e}")
+                                            loss = None
                                         
                                         # Print RL agent status
                                         print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
@@ -759,38 +752,6 @@ class CarlaSimulator:
                                     self.vehicle.apply_control(control)
                                 except Exception as e:
                                     print(f"Error applying control: {e}")
-                                    raise
-                                
-                                # Get next state for RL
-                                try:
-                                    next_state = self.rl_agent.get_state(self.vehicle, self.world)
-                                except Exception as e:
-                                    print(f"Error getting next state: {e}")
-                                    raise
-                                
-                                # Calculate reward based on ethical considerations
-                                try:
-                                    reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
-                                except Exception as e:
-                                    print(f"Error calculating reward: {e}")
-                                    raise
-                                
-                                # Additional reward for successful pedestrian avoidance
-                                if pedestrian_in_path and distance_to_pedestrian > 5.0:
-                                    reward += 0.5  # Reward for finding a clear path around pedestrian
-                                
-                                # Store experience
-                                try:
-                                    self.rl_agent.remember(state, action, reward, next_state, False)
-                                except Exception as e:
-                                    print(f"Error storing experience: {e}")
-                                    raise
-                                
-                                # Train the agent
-                                try:
-                                    loss = self.rl_agent.train()
-                                except Exception as e:
-                                    print(f"Error training agent: {e}")
                                     raise
                                 
                                 # Print vehicle state
