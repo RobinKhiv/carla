@@ -24,13 +24,7 @@ class CarlaSimulator:
             self.running = False
             self.traffic_manager = None
             self.initialized = False
-            self.pedestrians = []
-            self.other_vehicles = []
-            self.walker_controllers = []
             self.obstacle_avoidance = ObstacleAvoidance()
-            self.steering = 0.0  # Initialize steering attribute
-            self.throttle = 0.0  # Initialize throttle attribute
-            self.brake = 0.0     # Initialize brake attribute
             
             # Initialize reinforcement learning agent with ethical priorities
             ethical_priorities = EthicalPriorities(
