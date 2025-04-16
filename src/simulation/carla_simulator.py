@@ -698,14 +698,17 @@ class CarlaSimulator:
                                 next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
                                 next_waypoint_location = next_waypoint.transform.location
                                 
+                                # Convert vehicle velocity to scalar speed in km/h
+                                vehicle_speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6
+                                
                                 # Get obstacle avoidance control values
                                 try:
                                     throttle, brake, steer = self.obstacle_avoidance.predict_control(
-                                        vehicle_location,
-                                        vehicle_velocity,
-                                        self.vehicle.get_transform().rotation,
+                                        np.array([vehicle_location.x, vehicle_location.y, vehicle_location.z]),
+                                        vehicle_speed,
+                                        np.array([0, self.vehicle.get_transform().rotation.yaw, 0]),
                                         obstacles,
-                                        next_waypoint_location
+                                        np.array([next_waypoint_location.x, next_waypoint_location.y, next_waypoint_location.z])
                                     )
                                 except Exception as e:
                                     print(f"Error getting obstacle avoidance control: {e}")
