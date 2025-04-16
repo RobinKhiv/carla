@@ -683,6 +683,40 @@ class CarlaSimulator:
                                 control.hand_brake = False
                                 control.reverse = False
                                 
+                                # Get state for RL agent
+                                try:
+                                    state = self.rl_agent.get_state(self.vehicle, self.world)
+                                except Exception as e:
+                                    print(f"Error getting RL agent state: {e}")
+                                    raise
+                                
+                                # Get obstacle avoidance predictions
+                                try:
+                                    obstacles = self.detect_obstacles()
+                                except Exception as e:
+                                    print(f"Error detecting obstacles: {e}")
+                                    raise
+                                
+                                # Get next waypoint location
+                                next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
+                                next_waypoint_location = next_waypoint.transform.location
+                                
+                                # Convert vehicle velocity to scalar speed in km/h
+                                vehicle_speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6
+                                
+                                # Get obstacle avoidance control values
+                                try:
+                                    throttle, brake, steer = self.obstacle_avoidance.predict_control(
+                                        np.array([vehicle_location.x, vehicle_location.y, vehicle_location.z]),
+                                        vehicle_speed,
+                                        np.array([0, self.vehicle.get_transform().rotation.yaw, 0]),
+                                        obstacles,
+                                        np.array([next_waypoint_location.x, next_waypoint_location.y, next_waypoint_location.z])
+                                    )
+                                except Exception as e:
+                                    print(f"Error getting obstacle avoidance control: {e}")
+                                    raise
+                                
                                 if pedestrian_in_path and pedestrian_location:
                                     # Calculate which side of the road the pedestrian is on
                                     vehicle_forward = self.vehicle.get_transform().get_forward_vector()
