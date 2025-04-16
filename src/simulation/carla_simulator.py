@@ -734,12 +734,36 @@ class CarlaSimulator:
                                         # Try to change to left lane
                                         left_lane = current_waypoint.get_left_lane()
                                         if left_lane and left_lane.lane_type == carla.LaneType.Driving:
-                                            target_lane = left_lane
+                                            # Check if there are vehicles in the target lane
+                                            target_lane_clear = True
+                                            for actor in self.world.get_actors().filter('vehicle.*'):
+                                                if actor.id != self.vehicle.id:
+                                                    actor_location = actor.get_location()
+                                                    actor_waypoint = self.world.get_map().get_waypoint(actor_location)
+                                                    if actor_waypoint and actor_waypoint.lane_id == left_lane.lane_id:
+                                                        distance = vehicle_location.distance(actor_location)
+                                                        if distance < 20.0:  # Check within 20 meters
+                                                            target_lane_clear = False
+                                                            break
+                                            if target_lane_clear:
+                                                target_lane = left_lane
                                     else:  # Pedestrian on left
                                         # Try to change to right lane
                                         right_lane = current_waypoint.get_right_lane()
                                         if right_lane and right_lane.lane_type == carla.LaneType.Driving:
-                                            target_lane = right_lane
+                                            # Check if there are vehicles in the target lane
+                                            target_lane_clear = True
+                                            for actor in self.world.get_actors().filter('vehicle.*'):
+                                                if actor.id != self.vehicle.id:
+                                                    actor_location = actor.get_location()
+                                                    actor_waypoint = self.world.get_map().get_waypoint(actor_location)
+                                                    if actor_waypoint and actor_waypoint.lane_id == right_lane.lane_id:
+                                                        distance = vehicle_location.distance(actor_location)
+                                                        if distance < 20.0:  # Check within 20 meters
+                                                            target_lane_clear = False
+                                                            break
+                                            if target_lane_clear:
+                                                target_lane = right_lane
                                     
                                     if target_lane:
                                         # Calculate steering to change lanes
@@ -754,18 +778,26 @@ class CarlaSimulator:
                                             control.steer = steering_angle * 2.0  # Double the steering angle
                                             control.throttle = 0.3  # Moderate speed
                                             control.brake = 0.2  # Light braking
+                                            print(f"\nChanging lanes to avoid pedestrian at {distance_to_pedestrian:.1f}m")
                                         else:
                                             control.steer = steering_angle * 1.5  # Increased steering
                                             control.throttle = 0.5  # Normal speed
                                             control.brake = 0.1  # Very light braking
-                                        
-                                        print(f"\nChanging lanes to avoid pedestrian at {distance_to_pedestrian:.1f}m")
+                                            print(f"\nPreparing to change lanes for pedestrian at {distance_to_pedestrian:.1f}m")
                                     else:
-                                        # If no safe lane change possible, slow down and steer away
-                                        control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
-                                        control.throttle = 0.2  # Slow speed
-                                        control.brake = 0.3  # Moderate braking
-                                        print(f"\nNo safe lane change possible, slowing down near pedestrian at {distance_to_pedestrian:.1f}m")
+                                        # If no safe lane change possible, try to create space
+                                        if distance_to_pedestrian < 15.0:
+                                            # More aggressive steering away from pedestrian
+                                            control.steer = pedestrian_side * 0.8  # Increased steering away
+                                            control.throttle = 0.1  # Very slow speed
+                                            control.brake = 0.4  # Stronger braking
+                                            print(f"\nNo safe lane change possible, creating space near pedestrian at {distance_to_pedestrian:.1f}m")
+                                        else:
+                                            # Maintain distance and prepare for potential lane change
+                                            control.steer = pedestrian_side * 0.3  # Gentle steering away
+                                            control.throttle = 0.3  # Reduced speed
+                                            control.brake = 0.2  # Moderate braking
+                                            print(f"\nMaintaining safe distance from pedestrian at {distance_to_pedestrian:.1f}m")
                                 else:
                                     # Normal driving conditions - combine all systems
                                     try:
