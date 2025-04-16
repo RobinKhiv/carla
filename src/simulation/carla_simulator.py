@@ -57,16 +57,16 @@ class CarlaSimulator:
             if not available_maps:
                 raise RuntimeError("No maps available in CARLA server")
             
-            # Try to load Town03, fall back to Town01 if not available
+            # Try to load Town04 (has more lanes and complex intersections)
             try:
-                print("Loading Town03 map...")
-                self.client.load_world('Town03')
+                print("Loading Town04 map...")
+                self.client.load_world('Town04')
             except Exception as e:
-                print(f"Failed to load Town03, trying Town01: {e}")
+                print(f"Failed to load Town04, trying Town03: {e}")
                 try:
-                    self.client.load_world('Town01')
+                    self.client.load_world('Town03')
                 except Exception as e:
-                    print(f"Failed to load Town01: {e}")
+                    print(f"Failed to load Town03: {e}")
                     raise RuntimeError("Failed to load any map")
             
             # Get the world
@@ -297,110 +297,77 @@ class CarlaSimulator:
                     print("Warning: No sidewalk waypoints found")
                     return
                 
-                # Scenario 1: Crosswalk scenario
+                # Scenario 1: Create a pedestrian crossing with space to go around
                 crosswalk_waypoints = [wp for wp in sidewalk_waypoints if wp.is_junction]
                 if crosswalk_waypoints:
-                    for i in range(10):  # 10 pedestrians at crosswalk
-                        max_retries = 5
-                        for retry in range(max_retries):
-                            try:
-                                # Select a random crosswalk waypoint
-                                spawn_waypoint = random.choice(crosswalk_waypoints)
-                                spawn_point = carla.Transform()
-                                spawn_point.location = spawn_waypoint.transform.location
-                                spawn_point.location.z += 0.5  # Raise slightly above ground
-                                
-                                # Check for collisions before spawning
-                                collision = False
-                                for actor in self.world.get_actors():
-                                    if actor.get_location().distance(spawn_point.location) < 2.0:
-                                        collision = True
-                                        break
-                                
-                                if not collision:
-                                    walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                                    if walker is not None:
-                                        # Find a destination waypoint across the street
-                                        next_waypoints = spawn_waypoint.next(5.0)
-                                        if next_waypoints:
-                                            destination = random.choice(next_waypoints).transform.location
-                                            destination.z = spawn_point.location.z
-                                            walker.set_location(destination)
-                                            pedestrians_spawned += 1
-                                            break
-                            except Exception as e:
-                                if retry == max_retries - 1:
-                                    print(f"Warning: Failed to spawn crosswalk pedestrian after {max_retries} attempts: {e}")
+                    # Spawn pedestrians in a line across the road, leaving space on the sides
+                    spawn_waypoint = random.choice(crosswalk_waypoints)
+                    spawn_location = spawn_waypoint.transform.location
+                    
+                    # Calculate perpendicular direction to the road
+                    road_direction = spawn_waypoint.transform.get_forward_vector()
+                    perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
+                    
+                    # Spawn pedestrians in a line, leaving space on the sides
+                    for i in range(5):  # 5 pedestrians in a line
+                        offset = (i - 2) * 2.0  # Space them 2 meters apart
+                        spawn_point = carla.Transform()
+                        spawn_point.location = spawn_location + perpendicular * offset
+                        spawn_point.location.z += 0.5  # Raise slightly above ground
+                        
+                        # Check for collisions before spawning
+                        collision = False
+                        for actor in self.world.get_actors():
+                            if actor.get_location().distance(spawn_point.location) < 2.0:
+                                collision = True
+                                break
+                        
+                        if not collision:
+                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                            if walker is not None:
+                                # Find a destination waypoint across the street
+                                next_waypoints = spawn_waypoint.next(5.0)
+                                if next_waypoints:
+                                    destination = random.choice(next_waypoints).transform.location
+                                    destination.z = spawn_point.location.z
+                                    walker.set_location(destination)
+                                    pedestrians_spawned += 1
                 
-                # Scenario 2: School zone scenario
-                school_zone_waypoints = [wp for wp in sidewalk_waypoints if not wp.is_junction]
-                if school_zone_waypoints:
-                    for i in range(15):  # 15 pedestrians in school zone
-                        max_retries = 5
-                        for retry in range(max_retries):
-                            try:
-                                # Select a random sidewalk waypoint
-                                spawn_waypoint = random.choice(school_zone_waypoints)
-                                spawn_point = carla.Transform()
-                                spawn_point.location = spawn_waypoint.transform.location
-                                spawn_point.location.z += 0.5  # Raise slightly above ground
-                                
-                                # Check for collisions before spawning
-                                collision = False
-                                for actor in self.world.get_actors():
-                                    if actor.get_location().distance(spawn_point.location) < 2.0:
-                                        collision = True
-                                        break
-                                
-                                if not collision:
-                                    walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                                    if walker is not None:
-                                        # Find a destination waypoint along the sidewalk
-                                        next_waypoints = spawn_waypoint.next(10.0)
-                                        if next_waypoints:
-                                            destination = random.choice(next_waypoints).transform.location
-                                            destination.z = spawn_point.location.z
-                                            walker.set_location(destination)
-                                            pedestrians_spawned += 1
-                                            break
-                            except Exception as e:
-                                if retry == max_retries - 1:
-                                    print(f"Warning: Failed to spawn school zone pedestrian after {max_retries} attempts: {e}")
-                
-                # Scenario 3: Busy intersection scenario
-                intersection_waypoints = [wp for wp in sidewalk_waypoints if wp.is_junction]
-                if intersection_waypoints:
-                    for i in range(25):  # 25 pedestrians at intersection
-                        max_retries = 5
-                        for retry in range(max_retries):
-                            try:
-                                # Select a random intersection waypoint
-                                spawn_waypoint = random.choice(intersection_waypoints)
-                                spawn_point = carla.Transform()
-                                spawn_point.location = spawn_waypoint.transform.location
-                                spawn_point.location.z += 0.5  # Raise slightly above ground
-                                
-                                # Check for collisions before spawning
-                                collision = False
-                                for actor in self.world.get_actors():
-                                    if actor.get_location().distance(spawn_point.location) < 2.0:
-                                        collision = True
-                                        break
-                                
-                                if not collision:
-                                    walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                                    if walker is not None:
-                                        # Find a destination waypoint in a random direction
-                                        next_waypoints = spawn_waypoint.next(15.0)
-                                        if next_waypoints:
-                                            destination = random.choice(next_waypoints).transform.location
-                                            destination.z = spawn_point.location.z
-                                            walker.set_location(destination)
-                                            pedestrians_spawned += 1
-                                            break
-                            except Exception as e:
-                                if retry == max_retries - 1:
-                                    print(f"Warning: Failed to spawn intersection pedestrian after {max_retries} attempts: {e}")
+                # Scenario 2: Create a group of pedestrians with space to navigate around
+                group_waypoints = [wp for wp in sidewalk_waypoints if not wp.is_junction]
+                if group_waypoints:
+                    # Spawn pedestrians in a small group, leaving space to go around
+                    spawn_waypoint = random.choice(group_waypoints)
+                    spawn_location = spawn_waypoint.transform.location
+                    
+                    # Spawn pedestrians in a small cluster
+                    for i in range(3):  # 3 pedestrians in a group
+                        angle = i * 120  # Space them 120 degrees apart
+                        distance = 2.0  # 2 meters from center
+                        spawn_point = carla.Transform()
+                        spawn_point.location = spawn_location + carla.Location(
+                            distance * math.cos(math.radians(angle)),
+                            distance * math.sin(math.radians(angle)),
+                            0.5
+                        )
+                        
+                        # Check for collisions before spawning
+                        collision = False
+                        for actor in self.world.get_actors():
+                            if actor.get_location().distance(spawn_point.location) < 2.0:
+                                collision = True
+                                break
+                        
+                        if not collision:
+                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
+                            if walker is not None:
+                                # Find a destination waypoint along the sidewalk
+                                next_waypoints = spawn_waypoint.next(10.0)
+                                if next_waypoints:
+                                    destination = random.choice(next_waypoints).transform.location
+                                    destination.z = spawn_point.location.z
+                                    walker.set_location(destination)
+                                    pedestrians_spawned += 1
                 
                 print(f"Spawned {vehicles_spawned} vehicles and {pedestrians_spawned} pedestrians in various scenarios")
             except Exception as e:
