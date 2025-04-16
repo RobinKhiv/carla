@@ -326,8 +326,8 @@ class CarlaSimulator:
                     return False
                 
                 # Spawn pedestrians in downtown areas
-                num_sections = 20  # Try 20 different downtown sections
-                pedestrians_per_section = 5  # Try to spawn 5 pedestrians per section
+                num_sections = 5  # Reduced from 20 to 5 sections
+                pedestrians_per_section = 3  # Reduced from 5 to 3 pedestrians per section
                 
                 for section in range(num_sections):
                     print(f"\nAttempting to spawn pedestrians in section {section + 1}")
@@ -343,20 +343,20 @@ class CarlaSimulator:
                         # Try different offsets
                         for offset in [-2.0, -1.0, 0.0, 1.0, 2.0]:  # Smaller offsets for downtown
                             spawn_point = carla.Transform()
-                            spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 2.0)
+                            spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 3.0)  # Increased spacing to 3m
                             spawn_point.location.z += 0.5
                             
                             if try_spawn_pedestrian(spawn_point, waypoint):
                                 break  # Move to next pedestrian if successful
                     
                     # Move to next waypoint for next section
-                    next_waypoints = waypoint.next(20.0)  # Move 20 meters ahead
+                    next_waypoints = waypoint.next(30.0)  # Increased to 30m between sections
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
                 # Additional random pedestrian spawning in downtown
                 print("\nAttempting additional random pedestrian spawning in downtown...")
-                for _ in range(50):  # Try to spawn 50 more random pedestrians
+                for _ in range(10):  # Reduced from 50 to 10 additional pedestrians
                     waypoint = random.choice(downtown_waypoints)
                     spawn_location = waypoint.transform.location
                     
@@ -374,7 +374,7 @@ class CarlaSimulator:
                             break  # Move to next attempt if successful
                     
                     # Move to next waypoint
-                    next_waypoints = waypoint.next(10.0)  # Move 10 meters ahead
+                    next_waypoints = waypoint.next(15.0)  # Increased to 15m between random spawns
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
