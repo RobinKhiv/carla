@@ -215,4 +215,56 @@ class ObstacleAvoidance:
         loss.backward()
         self.optimizer.step()
         
-        return loss.item() 
+        return loss.item()
+    
+    def evaluate_space(self, space_location: np.ndarray, vehicle_speed: float, 
+                      obstacles: List[Tuple[np.ndarray, float, str]]) -> bool:
+        """Evaluate if a space is safe to navigate through using ML model."""
+        try:
+            # Preprocess input for space evaluation
+            input_data = self.preprocess_input(
+                space_location,  # Use space location instead of vehicle location
+                vehicle_speed,
+                np.array([0, 0, 0]),  # Simplified rotation
+                obstacles,
+                space_location  # Use same location for waypoint
+            )
+            
+            # Convert to tensor
+            input_tensor = torch.FloatTensor(input_data)
+            
+            # Get model prediction
+            with torch.no_grad():
+                output = self.model(input_tensor)
+                
+            # Extract safety score from model output
+            safety_score = float(output[0].item())  # First output neuron for safety
+            
+            # Consider space safe if safety score is above threshold
+            return safety_score > 0.5
+            
+        except Exception as e:
+            print(f"Error evaluating space: {e}")
+            return False
+    
+    def score_space(self, space_location: np.ndarray, pedestrian_location: np.ndarray, 
+                   vehicle_speed: float) -> float:
+        """Score a space based on its desirability for navigation."""
+        try:
+            # Calculate distance to pedestrian
+            distance_to_pedestrian = np.linalg.norm(space_location - pedestrian_location)
+            
+            # Normalize distance (assuming max distance of 50m)
+            normalized_distance = min(distance_to_pedestrian / 50.0, 1.0)
+            
+            # Calculate speed factor (slower is better when near pedestrians)
+            speed_factor = 1.0 - min(vehicle_speed / 50.0, 1.0)  # Assuming max speed of 50 km/h
+            
+            # Combine factors with weights
+            score = (0.7 * normalized_distance + 0.3 * speed_factor)
+            
+            return float(score)
+            
+        except Exception as e:
+            print(f"Error scoring space: {e}")
+            return 0.0 
