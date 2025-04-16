@@ -703,7 +703,7 @@ class CarlaSimulator:
                                             waypoint_location = waypoint.transform.location
                                             pedestrian_distance = waypoint_location.distance(pedestrian_location)
                                             
-                                            if pedestrian_distance > min_pedestrian_distance:
+                                            if pedestrian_distance < min_pedestrian_distance:
                                                 min_pedestrian_distance = pedestrian_distance
                                                 best_waypoint = waypoint
                                         
@@ -722,7 +722,7 @@ class CarlaSimulator:
                                             control.throttle = (0.8 + obstacle_control['throttle']) / 2
                                             control.brake = obstacle_control['brake']
                                             
-                                            print(f"\nNavigating around pedestrian at {distance_to_pedestrian:.1f}m")
+                                            print(f"\nNavigating around pedestrian at {min_pedestrian_distance:.1f}m")
                                         else:
                                             # If no good waypoint found, use combined RL and obstacle avoidance
                                             action = self.rl_agent.select_action(state)
