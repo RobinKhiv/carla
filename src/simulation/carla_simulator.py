@@ -297,69 +297,62 @@ class CarlaSimulator:
                 
                 print(f"Found {len(highway_waypoints)} highway waypoints")
                 
-                # Scenario 1: Pedestrians on highway
-                highway_waypoint = random.choice(highway_waypoints)
-                spawn_location = highway_waypoint.transform.location
-                
-                # Calculate perpendicular direction to the road
-                road_direction = highway_waypoint.transform.get_forward_vector()
-                perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
-                
-                # Spawn pedestrians on the highway
-                for i in range(5):  # 5 pedestrians
-                    offset = (i - 2) * 2.0  # Space them 2 meters apart
-                    spawn_point = carla.Transform()
-                    # Place on the highway
-                    spawn_point.location = spawn_location + perpendicular * 3.0 + road_direction * offset
-                    spawn_point.location.z += 0.5  # Raise slightly above ground
-                    
-                    print(f"Attempting to spawn pedestrian at {spawn_point.location}")
-                    
-                    # Check for collisions before spawning
-                    collision = False
-                    for actor in self.world.get_actors():
-                        if actor.get_location().distance(spawn_point.location) < 2.0:
-                            collision = True
-                            break
-                    
-                    if not collision:
+                # Function to try spawning a pedestrian at a location
+                def try_spawn_pedestrian(spawn_point, waypoint):
+                    nonlocal pedestrians_spawned
+                    try:
+                        # Check for collisions
+                        if any(actor.get_location().distance(spawn_point.location) < 2.0 
+                              for actor in self.world.get_actors()):
+                            return False
+                        
                         walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
                         if walker is not None:
                             # Find a destination waypoint
-                            next_waypoints = highway_waypoint.next(10.0)
+                            next_waypoints = waypoint.next(10.0)
                             if next_waypoints:
                                 destination = random.choice(next_waypoints).transform.location
                                 destination.z = spawn_point.location.z
                                 walker.set_location(destination)
                                 pedestrians_spawned += 1
-                                print(f"Successfully spawned pedestrian {pedestrians_spawned}")
+                                print(f"Successfully spawned pedestrian {pedestrians_spawned} at {spawn_point.location}")
+                                return True
+                    except Exception as e:
+                        print(f"Failed to spawn pedestrian: {e}")
+                    return False
                 
-                # Scenario 2: More pedestrians on different highway sections
-                for _ in range(3):  # Try 3 different highway sections
+                # Spawn pedestrians in multiple highway sections
+                num_sections = 5  # Try 5 different highway sections
+                pedestrians_per_section = 5  # Try to spawn 5 pedestrians per section
+                
+                for section in range(num_sections):
+                    print(f"\nAttempting to spawn pedestrians in section {section + 1}")
                     waypoint = random.choice(highway_waypoints)
                     spawn_location = waypoint.transform.location
                     
-                    for i in range(3):  # 3 pedestrians per section
-                        offset = (i - 1) * 3.0
-                        spawn_point = carla.Transform()
-                        spawn_point.location = spawn_location + perpendicular * 3.0 + road_direction * offset
-                        spawn_point.location.z += 0.5
-                        
-                        print(f"Attempting to spawn pedestrian at {spawn_point.location}")
-                        
-                        if not any(actor.get_location().distance(spawn_point.location) < 2.0 
-                                 for actor in self.world.get_actors()):
-                            walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                            if walker is not None:
-                                next_waypoints = waypoint.next(15.0)
-                                if next_waypoints:
-                                    destination = random.choice(next_waypoints).transform.location
-                                    destination.z = spawn_point.location.z
-                                    walker.set_location(destination)
-                                    pedestrians_spawned += 1
-                                    print(f"Successfully spawned pedestrian {pedestrians_spawned}")
+                    # Calculate road direction and perpendicular
+                    road_direction = waypoint.transform.get_forward_vector()
+                    perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
+                    
+                    # Try different spawn points in this section
+                    for i in range(pedestrians_per_section):
+                        # Try different offsets
+                        for offset in [-3.0, -1.5, 0.0, 1.5, 3.0]:
+                            spawn_point = carla.Transform()
+                            spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 2.0)
+                            spawn_point.location.z += 0.5
+                            
+                            if try_spawn_pedestrian(spawn_point, waypoint):
+                                break  # Move to next pedestrian if successful
+                    
+                    # Move to next waypoint for next section
+                    next_waypoints = waypoint.next(50.0)  # Move 50 meters ahead
+                    if next_waypoints:
+                        waypoint = random.choice(next_waypoints)
                 
+                print(f"\nTotal pedestrians spawned: {pedestrians_spawned}")
                 print(f"Spawned {vehicles_spawned} vehicles and {pedestrians_spawned} pedestrians on highways")
+                
             except Exception as e:
                 print(f"Error spawning pedestrians: {e}")
                 import traceback
