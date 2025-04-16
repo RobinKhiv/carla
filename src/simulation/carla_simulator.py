@@ -652,7 +652,7 @@ class CarlaSimulator:
                             
                             for actor in nearby_actors.filter('walker.*'):
                                 actor_location = actor.get_location()
-                                distance = vehicle_location.distance(actor_location)
+                                distance = float(vehicle_location.distance(actor_location))  # Convert to float
                                 
                                 if distance < 20.0:  # Check within 20 meters
                                     # Calculate if pedestrian is in vehicle's path
@@ -664,7 +664,7 @@ class CarlaSimulator:
                                     if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
                                         pedestrian_in_path = True
                                         pedestrian_location = actor_location
-                                        distance_to_pedestrian = float(distance)  # Convert to float
+                                        distance_to_pedestrian = distance  # Store the float distance
                                         break
                             
                             # Get control from traffic manager
