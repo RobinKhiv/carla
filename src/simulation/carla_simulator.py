@@ -727,10 +727,27 @@ class CarlaSimulator:
                                             best_waypoint = None
                                             max_pedestrian_distance = 0.0
                                             
+                                            # Calculate which side of the road the pedestrian is on
+                                            vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                                            pedestrian_direction = pedestrian_location - vehicle_location
+                                            pedestrian_direction = pedestrian_direction.make_unit_vector()
+                                            cross_product = vehicle_forward.cross(pedestrian_direction)
+                                            pedestrian_side = 1.0 if cross_product.z > 0 else -1.0  # 1 for right, -1 for left
+                                            
                                             for waypoint in next_waypoints:
                                                 # Calculate distance from waypoint to pedestrian
                                                 waypoint_location = waypoint.transform.location
                                                 pedestrian_distance = float(waypoint_location.distance(pedestrian_location))
+                                                
+                                                # Prefer waypoints on the opposite side of the pedestrian
+                                                waypoint_direction = waypoint_location - vehicle_location
+                                                waypoint_direction = waypoint_direction.make_unit_vector()
+                                                waypoint_cross = vehicle_forward.cross(waypoint_direction)
+                                                waypoint_side = 1.0 if waypoint_cross.z > 0 else -1.0
+                                                
+                                                # If waypoint is on opposite side of pedestrian, give it higher priority
+                                                if waypoint_side != pedestrian_side:
+                                                    pedestrian_distance *= 1.5  # Increase effective distance
                                                 
                                                 if pedestrian_distance > max_pedestrian_distance:
                                                     max_pedestrian_distance = pedestrian_distance
@@ -749,14 +766,20 @@ class CarlaSimulator:
                                                 # More aggressive avoidance when pedestrian is close
                                                 if distance_to_pedestrian < 10.0:
                                                     # Stronger steering and braking when pedestrian is close
-                                                    control.steer = steering_angle * 1.5  # Increase steering
+                                                    control.steer = steering_angle * 2.0  # Double the steering angle
                                                     control.throttle = 0.2  # Reduce speed
                                                     control.brake = 0.3  # Apply some brake
+                                                    
+                                                    # If pedestrian is very close, try to steer more aggressively
+                                                    if distance_to_pedestrian < 5.0:
+                                                        control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
+                                                        control.throttle = 0.1  # Very slow speed
+                                                        control.brake = 0.4  # More braking
                                                 else:
                                                     # Normal avoidance when pedestrian is further
-                                                    control.steer = steering_angle
-                                                    control.throttle = 0.5
-                                                    control.brake = 0.1
+                                                    control.steer = steering_angle * 1.5  # Increased steering
+                                                    control.throttle = 0.4  # Moderate speed
+                                                    control.brake = 0.1  # Light braking
                                                 
                                                 print(f"\nNavigating around pedestrian at {distance_to_pedestrian:.1f}m")
                                             else:
@@ -770,7 +793,7 @@ class CarlaSimulator:
                                                     # More conservative controls when pedestrian is close
                                                     if distance_to_pedestrian < 10.0:
                                                         control.throttle = 0.2
-                                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                        control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
                                                         control.brake = 0.3
                                                     else:
                                                         control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
@@ -790,7 +813,7 @@ class CarlaSimulator:
                                                 # More conservative controls when pedestrian is close
                                                 if distance_to_pedestrian < 10.0:
                                                     control.throttle = 0.2
-                                                    control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                    control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
                                                     control.brake = 0.3
                                                 else:
                                                     control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
