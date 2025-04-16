@@ -64,7 +64,11 @@ class CarlaSimulator:
                 self.client.load_world('Town03')
             except Exception as e:
                 print(f"Failed to load Town03, trying Town01: {e}")
-                self.client.load_world('Town01')
+                try:
+                    self.client.load_world('Town01')
+                except Exception as e:
+                    print(f"Failed to load Town01: {e}")
+                    raise RuntimeError("Failed to load any map")
             
             # Get the world
             self.world = self.client.get_world()
@@ -88,7 +92,26 @@ class CarlaSimulator:
             self.traffic_manager.set_hybrid_physics_mode(True)
             self.traffic_manager.set_hybrid_physics_radius(70.0)
             
+            # Initialize obstacle avoidance model
+            print("Initializing obstacle avoidance model...")
+            self.obstacle_avoidance = ObstacleAvoidance()
+            
+            # Initialize RL agent
+            print("Initializing RL agent...")
+            ethical_priorities = EthicalPriorities(
+                pedestrian_weight=1.0,
+                passenger_weight=1.0,
+                property_weight=0.5,
+                traffic_law_weight=0.8
+            )
+            self.rl_agent = RLEthicalAgent(
+                state_size=5,
+                action_size=9,
+                ethical_priorities=ethical_priorities
+            )
+            
             print("Simulator initialized successfully")
+            self.initialized = True
             return True
             
         except Exception as e:
@@ -97,6 +120,7 @@ class CarlaSimulator:
             print("1. CARLA server is running")
             print("2. CARLA server is accessible at localhost:2000")
             print("3. You have the correct version of CARLA installed")
+            self.initialized = False
             return False
 
     def spawn_vehicle(self) -> bool:
