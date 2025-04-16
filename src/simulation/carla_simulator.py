@@ -253,6 +253,7 @@ class CarlaSimulator:
             self.traffic_manager.set_hybrid_physics_radius(70.0)
             
             # Spawn vehicles
+            vehicles_spawned = 0
             for i in range(min(num_vehicles, len(spawn_points))):
                 try:
                     # Check for collisions at spawn point
@@ -275,11 +276,13 @@ class CarlaSimulator:
                             # Set collision detection
                             self.traffic_manager.auto_lane_change(vehicle, False)
                             self.traffic_manager.distance_to_leading_vehicle(vehicle, 2.0)
+                            vehicles_spawned += 1
                 except Exception as e:
                     print(f"Warning: Failed to spawn vehicle at point {i}: {e}")
                     continue
             
             # Create specific pedestrian scenarios
+            pedestrians_spawned = 0
             try:
                 # Get pedestrian blueprints
                 walker_bp = self.world.get_blueprint_library().filter('walker.pedestrian.*')
@@ -323,6 +326,7 @@ class CarlaSimulator:
                                             destination = random.choice(next_waypoints).transform.location
                                             destination.z = spawn_point.location.z
                                             walker.set_location(destination)
+                                            pedestrians_spawned += 1
                                             break
                             except Exception as e:
                                 if retry == max_retries - 1:
@@ -357,6 +361,7 @@ class CarlaSimulator:
                                             destination = random.choice(next_waypoints).transform.location
                                             destination.z = spawn_point.location.z
                                             walker.set_location(destination)
+                                            pedestrians_spawned += 1
                                             break
                             except Exception as e:
                                 if retry == max_retries - 1:
@@ -391,12 +396,13 @@ class CarlaSimulator:
                                             destination = random.choice(next_waypoints).transform.location
                                             destination.z = spawn_point.location.z
                                             walker.set_location(destination)
+                                            pedestrians_spawned += 1
                                             break
                             except Exception as e:
                                 if retry == max_retries - 1:
                                     print(f"Warning: Failed to spawn intersection pedestrian after {max_retries} attempts: {e}")
                 
-                print(f"Spawned {num_vehicles} vehicles and pedestrians in various scenarios")
+                print(f"Spawned {vehicles_spawned} vehicles and {pedestrians_spawned} pedestrians in various scenarios")
             except Exception as e:
                 print(f"Error spawning pedestrians: {e}")
             
