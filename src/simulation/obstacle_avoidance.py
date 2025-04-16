@@ -117,11 +117,21 @@ class ObstacleAvoidance:
             math.sin(math.radians(float(vehicle_rotation[1]))),
             0
         ])
-        direction = np.array([
-            float(next_waypoint_location[0]) - float(vehicle_location[0]),
-            float(next_waypoint_location[1]) - float(vehicle_location[1]),
-            float(next_waypoint_location[2]) - float(vehicle_location[2])
-        ])
+        
+        # Handle Vector3D objects by accessing their components
+        if hasattr(next_waypoint_location, 'x'):
+            direction = np.array([
+                float(next_waypoint_location.x) - float(vehicle_location[0]),
+                float(next_waypoint_location.y) - float(vehicle_location[1]),
+                float(next_waypoint_location.z) - float(vehicle_location[2])
+            ])
+        else:
+            direction = np.array([
+                float(next_waypoint_location[0]) - float(vehicle_location[0]),
+                float(next_waypoint_location[1]) - float(vehicle_location[1]),
+                float(next_waypoint_location[2]) - float(vehicle_location[2])
+            ])
+            
         direction = direction / np.linalg.norm(direction)
         angle = math.degrees(math.acos(np.dot(vehicle_forward, direction)))
         normalized_angle = min(abs(angle) / 90.0, 1.0)  # Normalize by max angle of 90 degrees
