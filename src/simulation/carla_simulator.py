@@ -716,7 +716,10 @@ class CarlaSimulator:
                                         
                                         # Print RL agent status with safe formatting
                                         try:
-                                            print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
+                                            action_str = str(action) if action is not None else "N/A"
+                                            reward_str = f"{reward:.2f}" if reward is not None else "N/A"
+                                            loss_str = f"{loss:.4f}" if loss is not None else "N/A"
+                                            print(f"\nRL Agent: Action={action_str}, Reward={reward_str}, Loss={loss_str}")
                                         except Exception as e:
                                             print(f"Error printing RL agent status: {e}")
                                         
@@ -738,6 +741,26 @@ class CarlaSimulator:
                                                   f"Loss: {loss_str}", end="")
                                         except Exception as e:
                                             print(f"Error printing vehicle state: {e}")
+                                        
+                                        # Debug information for ML and RL components
+                                        try:
+                                            if pedestrian_in_path:
+                                                print(f"\nML Debug: Distance to pedestrian: {distance_to_pedestrian:.2f}m")
+                                                print(f"ML Debug: Available spaces: {len(available_space)}")
+                                                if available_space:
+                                                    print(f"ML Debug: Best space score: {best_score:.2f}")
+                                                print(f"RL Debug: Action: {action}, Throttle level: {throttle_level}, Steer level: {steer_level}")
+                                                print(f"RL Debug: RL Throttle: {rl_throttle:.2f}, RL Steer: {rl_steer:.2f}")
+                                                print(f"RL Debug: Final Throttle: {control.throttle:.2f}, Final Steer: {control.steer:.2f}")
+                                        except Exception as e:
+                                            print(f"Error printing debug information: {e}")
+                                        
+                                        # Apply control to vehicle
+                                        try:
+                                            self.vehicle.apply_control(control)
+                                        except Exception as e:
+                                            print(f"Error applying control: {e}")
+                                            raise
                                     except Exception as e:
                                         print(f"Error in RL+ML navigation: {e}")
                                         # Fall back to obstacle avoidance if RL+ML fails
