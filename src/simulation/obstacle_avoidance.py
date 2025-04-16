@@ -48,33 +48,53 @@ class ObstacleAvoidance:
         X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, no obstacles
         y.append([0.1, 0.0, 0.0])  # throttle, brake, steer
         
-        # Case 4: Low speed, turn
-        X.append([0.2, 1.0, 0.3, 0.0, 0.0])  # low speed, turning
-        y.append([0.3, 0.0, 0.3])  # throttle, brake, steer
-        
-        # Case 5: High speed, turn
-        X.append([0.8, 1.0, 0.3, 0.0, 0.0])  # high speed, turning
-        y.append([0.0, 0.1, 0.3])  # throttle, brake, steer
-        
-        # Case 6: Vehicle ahead
+        # Case 4: Vehicle ahead
         X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, vehicle close
         y.append([0.0, 0.3, 0.0])  # throttle, brake, steer
         
-        # Case 7: Traffic light
-        X.append([0.5, 0.1, 0.0, 0.0, 0.0])  # medium speed, near traffic light
+        # Case 5: Pedestrian close ahead
+        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian close
+        y.append([0.0, 0.5, 0.0])  # throttle, brake, steer
+
+        # Case 6: Vehicle approaching from left
+        X.append([0.5, 0.3, -0.5, 0.0, 0.0])  # medium speed, vehicle left
+        y.append([0.0, 0.2, 0.3])  # throttle, brake, steer right
+        
+        # Case 7: Vehicle approaching from right
+        X.append([0.5, 0.3, 0.5, 0.0, 0.0])  # medium speed, vehicle right
+        y.append([0.0, 0.2, -0.3])  # throttle, brake, steer left
+        
+        # Case 8: Multiple obstacles ahead
+        X.append([0.5, 0.2, 0.0, 0.5, 0.5])  # medium speed, multiple obstacles
+        y.append([0.0, 0.6, 0.0])  # throttle, brake, steer
+        
+        # Case 9: Pedestrian crossing from left
+        X.append([0.4, 0.3, -0.4, 0.0, 1.0])  # medium speed, pedestrian left
+        y.append([0.0, 0.4, 0.2])  # throttle, brake, steer right
+        
+        # Case 10: Pedestrian crossing from right
+        X.append([0.4, 0.3, 0.4, 0.0, 1.0])  # medium speed, pedestrian right
+        y.append([0.0, 0.4, -0.2])  # throttle, brake, steer left
+        
+        # Case 11: High speed with distant obstacle
+        X.append([0.8, 0.6, 0.0, 0.0, 0.0])  # high speed, distant obstacle
+        y.append([0.2, 0.1, 0.0])  # throttle, brake, steer
+        
+        # Case 12: Low speed with nearby pedestrian
+        X.append([0.2, 0.3, 0.0, 0.0, 1.0])  # low speed, nearby pedestrian
+        y.append([0.0, 0.3, 0.0])  # throttle, brake, steer
+        
+        # Case 13: Medium speed with multiple pedestrians
+        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, multiple pedestrians
         y.append([0.0, 0.5, 0.0])  # throttle, brake, steer
         
-        # Case 8: Pedestrian far ahead
-        X.append([0.5, 0.4, 0.0, 0.0, 0.0])  # medium speed, pedestrian far
-        y.append([0.2, 0.0, 0.0])  # throttle, brake, steer
+        # Case 14: High speed with emergency stop
+        X.append([0.8, 0.1, 0.0, 0.0, 1.0])  # high speed, very close obstacle
+        y.append([0.0, 1.0, 0.0])  # throttle, brake, steer
         
-        # Case 9: Pedestrian close ahead
-        X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, pedestrian close
-        y.append([0.0, 0.2, 0.0])  # throttle, brake, steer
-        
-        # Case 10: Pedestrian not in path
-        X.append([0.5, 0.3, 0.5, 0.0, 0.0])  # medium speed, pedestrian not in path
-        y.append([0.3, 0.0, 0.0])  # throttle, brake, steer
+        # Case 15: Complex scenario with multiple obstacles
+        X.append([0.6, 0.2, 0.3, 0.5, 0.5])  # medium-high speed, multiple obstacles
+        y.append([0.0, 0.4, -0.2])  # throttle, brake, steer
         
         # Convert to tensors
         X = torch.FloatTensor(X)
@@ -186,36 +206,6 @@ class ObstacleAvoidance:
         steer = max(-1.0, min(1.0, steer))
         
         return throttle, brake, steer
-    
-    def update_model(self, experience: Tuple[np.ndarray, Tuple[float, float, float]]):
-        """Update the model based on new experience."""
-        # Add experience to buffer
-        self.experience_buffer.append(experience)
-        
-        # Limit buffer size
-        if len(self.experience_buffer) > 1000:
-            self.experience_buffer.pop(0)
-        
-        # Sample random batch
-        batch_size = min(32, len(self.experience_buffer))
-        batch = random.sample(self.experience_buffer, batch_size)
-        
-        # Convert batch to numpy arrays
-        X_batch = np.array([exp[0] for exp in batch])
-        y_batch = np.array([exp[1] for exp in batch])
-        
-        # Convert to tensors
-        X = torch.FloatTensor(X_batch)
-        y = torch.FloatTensor(y_batch)
-        
-        # Update model
-        self.optimizer.zero_grad()
-        output = self.model(X)
-        loss = self.criterion(output, y)
-        loss.backward()
-        self.optimizer.step()
-        
-        return loss.item()
     
     def evaluate_space(self, space_location: np.ndarray, vehicle_speed: float, 
                       obstacles: List[Tuple[np.ndarray, float, str]]) -> bool:

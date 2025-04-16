@@ -454,133 +454,6 @@ class CarlaSimulator:
         
         return obstacles
 
-    def check_traffic_light(self) -> str:
-        """Check the state of the traffic light ahead of the vehicle."""
-        if not self.vehicle:
-            return 'unknown'
-            
-        # Get vehicle location and transform
-        vehicle_location = self.vehicle.get_location()
-        vehicle_transform = self.vehicle.get_transform()
-        
-        # Get all traffic lights in the world
-        traffic_lights = self.world.get_actors().filter('traffic.traffic_light')
-        
-        # Find the nearest traffic light in front of the vehicle
-        nearest_light = None
-        min_distance = float('inf')
-        
-        for light in traffic_lights:
-            # Get traffic light location
-            light_location = light.get_location()
-            
-            # Calculate distance to traffic light
-            distance = vehicle_location.distance(light_location)
-            
-            # Check if traffic light is in front of the vehicle
-            vehicle_forward = vehicle_transform.get_forward_vector()
-            light_direction = light_location - vehicle_location
-            light_direction = light_direction.make_unit_vector()
-            
-            if vehicle_forward.dot(light_direction) > 0.5 and distance < 30.0:  # Only consider lights within 30 meters in front
-                if distance < min_distance:
-                    min_distance = distance
-                    nearest_light = light
-        
-        # If we found a traffic light, check its state
-        if nearest_light and min_distance < 10.0:  # Only consider lights within 10 meters
-            state = nearest_light.get_state()
-            if state == carla.TrafficLightState.Green:
-                return 'green'
-            elif state == carla.TrafficLightState.Yellow:
-                return 'yellow'
-            else:
-                return 'red'
-        
-        return 'unknown'
-
-    def _calculate_steering(self, angle_to_next_waypoint: float) -> float:
-        """Calculate steering angle based on angle to next waypoint."""
-        # More responsive steering for turns
-        max_steering = 0.15  # Increased from 0.08 to 0.15 for better turning
-        
-        # Adjust angle threshold for better turn detection
-        angle_threshold = 25.0  # Reduced from 35.0 to 25.0 for earlier turn detection
-        
-        # More aggressive steering response for turns
-        if abs(angle_to_next_waypoint) > angle_threshold:
-            steering = max_steering * 0.8  # Increased from 0.3 to 0.8 for sharper turns
-        else:
-            steering = max_steering * 0.4  # Increased from 0.2 to 0.4 for smoother turns
-            
-        # Apply steering direction
-        if angle_to_next_waypoint < 0:
-            steering = -steering
-            
-        # Less smoothing for more responsive steering
-        self.steering = self.steering * 0.95 + steering * 0.05  # Reduced from 0.99 to 0.95
-        
-        return self.steering
-
-    def _calculate_throttle_brake(self, target_velocity: float, current_velocity: float, angle_to_next_waypoint: float) -> Tuple[float, float]:
-        """Calculate throttle and brake values based on target velocity and current velocity."""
-        # Check for static obstacles (like light poles)
-        for actor in self.world.get_actors():
-            if actor.type_id.startswith('static.prop') or actor.type_id.startswith('traffic.traffic_light'):
-                # Calculate distance to obstacle
-                obstacle_location = actor.get_location()
-                vehicle_location = self.vehicle.get_location()
-                distance = vehicle_location.distance(obstacle_location)
-                
-                # If obstacle is within 10 meters and in front of vehicle
-                if distance < 10.0:
-                    # Calculate angle between vehicle direction and obstacle
-                    vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                    obstacle_direction = obstacle_location - vehicle_location
-                    obstacle_direction = obstacle_direction.make_unit_vector()
-                    
-                    # Calculate angle between vehicle direction and obstacle
-                    angle = math.degrees(math.acos(vehicle_forward.dot(obstacle_direction)))
-                    
-                    # If obstacle is in front (within 30 degrees)
-                    if angle < 30.0:
-                        print(f"Static obstacle detected {distance:.2f} meters ahead, stopping...")
-                        # Apply full brake and zero throttle
-                        self.throttle = 0.0
-                        self.brake = 1.0
-                        return self.throttle, self.brake
-        
-        # Calculate speed difference
-        speed_diff = target_velocity - current_velocity
-        
-        # Initialize throttle and brake
-        throttle = 0.0
-        brake = 0.0
-        
-        # Adjust speed based on angle to next waypoint
-        if abs(angle_to_next_waypoint) > 30.0:
-            # Sharp turn, reduce speed more
-            target_velocity *= 0.6  # Reduced from 0.8 to 0.6
-        elif abs(angle_to_next_waypoint) > 15.0:
-            # Moderate turn, slightly reduce speed
-            target_velocity *= 0.8  # Reduced from 0.9 to 0.8
-            
-        # Calculate throttle and brake based on speed difference
-        if speed_diff > 0:
-            # Need to accelerate
-            throttle = min(0.8, speed_diff / 10.0)  # Increased from 0.7 to 0.8
-            brake = 0.0
-        else:
-            # Need to decelerate
-            throttle = 0.0
-            brake = min(0.4, abs(speed_diff) / 10.0)  # Increased from 0.3 to 0.4
-            
-        # Apply smoothing
-        self.throttle = self.throttle * 0.95 + throttle * 0.05
-        self.brake = self.brake * 0.95 + brake * 0.05
-        
-        return self.throttle, self.brake
-
     def run(self):
         """Run the simulation."""
         try:
@@ -619,8 +492,6 @@ class CarlaSimulator:
             
             # Main simulation loop
             self.running = True
-            episode = 0
-            total_reward = 0
             
             while self.running:
                 try:
@@ -656,11 +527,11 @@ class CarlaSimulator:
                                 # Check for pedestrians in front
                                 pedestrian_in_path = False
                                 pedestrian_location = None
-                                distance_to_pedestrian = float('inf')  # Initialize with a large value
+                                distance_to_pedestrian = float('inf')
                                 
                                 for actor in nearby_actors.filter('walker.*'):
                                     actor_location = actor.get_location()
-                                    distance = float(vehicle_location.distance(actor_location))  # Convert to float
+                                    distance = float(vehicle_location.distance(actor_location))
                                     
                                     if distance < 20.0:  # Check within 20 meters
                                         # Calculate if pedestrian is in vehicle's path
@@ -672,7 +543,7 @@ class CarlaSimulator:
                                         if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
                                             pedestrian_in_path = True
                                             pedestrian_location = actor_location
-                                            distance_to_pedestrian = distance  # Store the float distance
+                                            distance_to_pedestrian = distance
                                             break
                                 
                                 # Initialize control with default values
@@ -887,16 +758,9 @@ class CarlaSimulator:
                                 if pedestrian_in_path and distance_to_pedestrian > 5.0:
                                     reward += 0.5  # Reward for finding a clear path around pedestrian
                                 
-                                total_reward += reward
-                                
-                                # Check if episode is done
-                                done = False
-                                if self.vehicle.get_velocity().length() < 0.1:  # Vehicle stopped
-                                    done = True
-                                
                                 # Store experience
                                 try:
-                                    self.rl_agent.remember(state, action, reward, next_state, done)
+                                    self.rl_agent.remember(state, action, reward, next_state, False)
                                 except Exception as e:
                                     print(f"Error storing experience: {e}")
                                     raise
@@ -908,26 +772,12 @@ class CarlaSimulator:
                                     print(f"Error training agent: {e}")
                                     raise
                                 
-                                # Update target network periodically
-                                if episode % 10 == 0:
-                                    try:
-                                        self.rl_agent.update_target_network()
-                                    except Exception as e:
-                                        print(f"Error updating target network: {e}")
-                                        raise
-                                
                                 # Print vehicle state
-                                print(f"\rEpisode: {episode}, Total Reward: {total_reward:.2f}, "
-                                      f"Speed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
+                                print(f"\rSpeed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
                                       f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
                                       f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
                                       f"Steering: {control.steer:.2f}, Epsilon: {self.rl_agent.epsilon:.2f}, "
                                       f"Loss: {loss if loss is not None else 0.0:.4f}", end="")
-                                
-                                if done:
-                                    episode += 1
-                                    total_reward = 0
-                                    print()  # New line for next episode
                     except Exception as e:
                         print(f"Error in waypoint handling: {e}")
                         raise
