@@ -648,6 +648,8 @@ class CarlaSimulator:
                             # Check for pedestrians in front
                             pedestrian_in_path = False
                             pedestrian_location = None
+                            distance_to_pedestrian = float('inf')  # Initialize with a large value
+                            
                             for actor in nearby_actors.filter('walker.*'):
                                 actor_location = actor.get_location()
                                 distance = vehicle_location.distance(actor_location)
@@ -662,6 +664,7 @@ class CarlaSimulator:
                                     if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
                                         pedestrian_in_path = True
                                         pedestrian_location = actor_location
+                                        distance_to_pedestrian = float(distance)  # Convert to float
                                         break
                             
                             # Get control from traffic manager
@@ -730,9 +733,9 @@ class CarlaSimulator:
                                             throttle_level = action // 3
                                             steer_level = action % 3
                                             
-                                            control.throttle = ([0.0, 0.5, 1.0][throttle_level] + obstacle_control['throttle']) / 2
-                                            control.steer = ([-0.5, 0.0, 0.5][steer_level] + obstacle_control['steer']) / 2
-                                            control.brake = obstacle_control['brake']
+                                            control.throttle = ([0.0, 0.5, 1.0][throttle_level] + float(obstacle_control['throttle'])) / 2
+                                            control.steer = ([-0.5, 0.0, 0.5][steer_level] + float(obstacle_control['steer'])) / 2
+                                            control.brake = float(obstacle_control['brake'])
                                     else:
                                         # If no waypoints found, use combined RL and obstacle avoidance
                                         action = self.rl_agent.select_action(state)
@@ -740,18 +743,18 @@ class CarlaSimulator:
                                         throttle_level = action // 3
                                         steer_level = action % 3
                                         
-                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + obstacle_control['throttle']) / 2
-                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + obstacle_control['steer']) / 2
-                                        control.brake = obstacle_control['brake']
+                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + float(obstacle_control['throttle'])) / 2
+                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + float(obstacle_control['steer'])) / 2
+                                        control.brake = float(obstacle_control['brake'])
                             else:
                                 # Normal driving conditions - combine all systems
                                 action = self.rl_agent.select_action(state)
                                 throttle_level = action // 3
                                 steer_level = action % 3
                                 
-                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + obstacle_control['throttle']) / 2
-                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + obstacle_control['steer']) / 2
-                                control.brake = obstacle_control['brake']
+                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + float(obstacle_control['throttle'])) / 2
+                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + float(obstacle_control['steer'])) / 2
+                                control.brake = float(obstacle_control['brake'])
                             
                             # Apply control to vehicle
                             self.vehicle.apply_control(control)
