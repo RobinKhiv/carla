@@ -610,9 +610,12 @@ class CarlaSimulator:
             self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)  # Always obey traffic lights
             self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)  # Maintain normal speed
             self.traffic_manager.distance_to_leading_vehicle(self.vehicle, 2.0)  # Safe following distance
-            self.traffic_manager.auto_lane_change(self.vehicle, True)  # Allow lane changes for obstacle avoidance
+            self.traffic_manager.auto_lane_change(self.vehicle, True)  # Enable automatic lane changes
             self.traffic_manager.set_hybrid_physics_mode(True)  # Enable hybrid physics
             self.traffic_manager.set_hybrid_physics_radius(70.0)  # Set physics radius
+            self.traffic_manager.random_left_lanechange_percentage(self.vehicle, 100)  # Allow left lane changes
+            self.traffic_manager.random_right_lanechange_percentage(self.vehicle, 100)  # Allow right lane changes
+            self.traffic_manager.keep_right_rule_percentage(self.vehicle, 0)  # Disable keep right rule
             
             # Main simulation loop
             self.running = True
@@ -680,148 +683,55 @@ class CarlaSimulator:
                                 control.hand_brake = False
                                 control.reverse = False
                                 
-                                # Get state for RL agent
-                                try:
-                                    state = self.rl_agent.get_state(self.vehicle, self.world)
-                                except Exception as e:
-                                    print(f"Error getting RL agent state: {e}")
-                                    raise
-                                
-                                # Get obstacle avoidance predictions
-                                try:
-                                    obstacles = self.detect_obstacles()
-                                except Exception as e:
-                                    print(f"Error detecting obstacles: {e}")
-                                    raise
-                                
-                                # Get next waypoint location
-                                next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
-                                next_waypoint_location = next_waypoint.transform.location
-                                
-                                # Convert vehicle velocity to scalar speed in km/h
-                                vehicle_speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6
-                                
-                                # Get obstacle avoidance control values
-                                try:
-                                    throttle, brake, steer = self.obstacle_avoidance.predict_control(
-                                        np.array([vehicle_location.x, vehicle_location.y, vehicle_location.z]),
-                                        vehicle_speed,
-                                        np.array([0, self.vehicle.get_transform().rotation.yaw, 0]),
-                                        obstacles,
-                                        np.array([next_waypoint_location.x, next_waypoint_location.y, next_waypoint_location.z])
-                                    )
-                                except Exception as e:
-                                    print(f"Error getting obstacle avoidance control: {e}")
-                                    raise
-                                
                                 if pedestrian_in_path and pedestrian_location:
-                                    # Get current waypoint
-                                    current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
+                                    # Calculate which side of the road the pedestrian is on
+                                    vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                                    pedestrian_direction = pedestrian_location - vehicle_location
+                                    pedestrian_direction = pedestrian_direction.make_unit_vector()
+                                    cross_product = vehicle_forward.cross(pedestrian_direction)
+                                    pedestrian_side = 1.0 if cross_product.z > 0 else -1.0  # 1 for right, -1 for left
                                     
-                                    if current_waypoint:
-                                        # Get all possible next waypoints
-                                        next_waypoints = current_waypoint.next(5.0)
+                                    # Get current lane
+                                    current_lane = current_waypoint.lane_id
+                                    
+                                    # Try to find a safe lane to change to
+                                    target_lane = None
+                                    if pedestrian_side > 0:  # Pedestrian on right
+                                        # Try to change to left lane
+                                        left_lane = current_waypoint.get_left_lane()
+                                        if left_lane and left_lane.lane_type == carla.LaneType.Driving:
+                                            target_lane = left_lane
+                                    else:  # Pedestrian on left
+                                        # Try to change to right lane
+                                        right_lane = current_waypoint.get_right_lane()
+                                        if right_lane and right_lane.lane_type == carla.LaneType.Driving:
+                                            target_lane = right_lane
+                                    
+                                    if target_lane:
+                                        # Calculate steering to change lanes
+                                        target_location = target_lane.transform.location
+                                        target_direction = target_location - vehicle_location
+                                        target_direction = target_direction.make_unit_vector()
+                                        target_cross = vehicle_forward.cross(target_direction)
+                                        steering_angle = float(math.asin(target_cross.z))
                                         
-                                        if next_waypoints:
-                                            # Find the best waypoint to avoid the pedestrian
-                                            best_waypoint = None
-                                            max_pedestrian_distance = 0.0
-                                            
-                                            # Calculate which side of the road the pedestrian is on
-                                            vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                                            pedestrian_direction = pedestrian_location - vehicle_location
-                                            pedestrian_direction = pedestrian_direction.make_unit_vector()
-                                            cross_product = vehicle_forward.cross(pedestrian_direction)
-                                            pedestrian_side = 1.0 if cross_product.z > 0 else -1.0  # 1 for right, -1 for left
-                                            
-                                            for waypoint in next_waypoints:
-                                                # Calculate distance from waypoint to pedestrian
-                                                waypoint_location = waypoint.transform.location
-                                                pedestrian_distance = float(waypoint_location.distance(pedestrian_location))
-                                                
-                                                # Prefer waypoints on the opposite side of the pedestrian
-                                                waypoint_direction = waypoint_location - vehicle_location
-                                                waypoint_direction = waypoint_direction.make_unit_vector()
-                                                waypoint_cross = vehicle_forward.cross(waypoint_direction)
-                                                waypoint_side = 1.0 if waypoint_cross.z > 0 else -1.0
-                                                
-                                                # If waypoint is on opposite side of pedestrian, give it higher priority
-                                                if waypoint_side != pedestrian_side:
-                                                    pedestrian_distance *= 1.5  # Increase effective distance
-                                                
-                                                if pedestrian_distance > max_pedestrian_distance:
-                                                    max_pedestrian_distance = pedestrian_distance
-                                                    best_waypoint = waypoint
-                                            
-                                            if best_waypoint:
-                                                # Calculate direction to best waypoint
-                                                waypoint_direction = best_waypoint.transform.location - vehicle_location
-                                                waypoint_direction = waypoint_direction.make_unit_vector()
-                                                
-                                                # Calculate steering angle
-                                                vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                                                cross_product = vehicle_forward.cross(waypoint_direction)
-                                                steering_angle = float(math.asin(cross_product.z))
-                                                
-                                                # More aggressive avoidance when pedestrian is close
-                                                if distance_to_pedestrian < 10.0:
-                                                    # Stronger steering and braking when pedestrian is close
-                                                    control.steer = steering_angle * 2.0  # Double the steering angle
-                                                    control.throttle = 0.2  # Reduce speed
-                                                    control.brake = 0.3  # Apply some brake
-                                                    
-                                                    # If pedestrian is very close, try to steer more aggressively
-                                                    if distance_to_pedestrian < 5.0:
-                                                        control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
-                                                        control.throttle = 0.1  # Very slow speed
-                                                        control.brake = 0.4  # More braking
-                                                else:
-                                                    # Normal avoidance when pedestrian is further
-                                                    control.steer = steering_angle * 1.5  # Increased steering
-                                                    control.throttle = 0.4  # Moderate speed
-                                                    control.brake = 0.1  # Light braking
-                                                
-                                                print(f"\nNavigating around pedestrian at {distance_to_pedestrian:.1f}m")
-                                            else:
-                                                # If no good waypoint found, use combined RL and obstacle avoidance
-                                                try:
-                                                    action = self.rl_agent.select_action(state)
-                                                    
-                                                    throttle_level = action // 3
-                                                    steer_level = action % 3
-                                                    
-                                                    # More conservative controls when pedestrian is close
-                                                    if distance_to_pedestrian < 10.0:
-                                                        control.throttle = 0.2
-                                                        control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
-                                                        control.brake = 0.3
-                                                    else:
-                                                        control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
-                                                        control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
-                                                        control.brake = brake
-                                                except Exception as e:
-                                                    print(f"Error selecting RL action: {e}")
-                                                    raise
+                                        # More aggressive lane change when pedestrian is close
+                                        if distance_to_pedestrian < 10.0:
+                                            control.steer = steering_angle * 2.0  # Double the steering angle
+                                            control.throttle = 0.3  # Moderate speed
+                                            control.brake = 0.2  # Light braking
                                         else:
-                                            # If no waypoints found, use combined RL and obstacle avoidance
-                                            try:
-                                                action = self.rl_agent.select_action(state)
-                                                
-                                                throttle_level = action // 3
-                                                steer_level = action % 3
-                                                
-                                                # More conservative controls when pedestrian is close
-                                                if distance_to_pedestrian < 10.0:
-                                                    control.throttle = 0.2
-                                                    control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
-                                                    control.brake = 0.3
-                                                else:
-                                                    control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
-                                                    control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
-                                                    control.brake = brake
-                                            except Exception as e:
-                                                print(f"Error selecting RL action: {e}")
-                                                raise
+                                            control.steer = steering_angle * 1.5  # Increased steering
+                                            control.throttle = 0.5  # Normal speed
+                                            control.brake = 0.1  # Very light braking
+                                        
+                                        print(f"\nChanging lanes to avoid pedestrian at {distance_to_pedestrian:.1f}m")
+                                    else:
+                                        # If no safe lane change possible, slow down and steer away
+                                        control.steer = pedestrian_side * 0.5  # Steer away from pedestrian
+                                        control.throttle = 0.2  # Slow speed
+                                        control.brake = 0.3  # Moderate braking
+                                        print(f"\nNo safe lane change possible, slowing down near pedestrian at {distance_to_pedestrian:.1f}m")
                                 else:
                                     # Normal driving conditions - combine all systems
                                     try:
