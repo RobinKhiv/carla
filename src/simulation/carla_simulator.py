@@ -771,16 +771,21 @@ class CarlaSimulator:
                                         target_direction = target_location - vehicle_location
                                         target_direction = target_direction.make_unit_vector()
                                         target_cross = vehicle_forward.cross(target_direction)
-                                        steering_angle = float(math.asin(target_cross.z))
+                                        
+                                        # Ensure the cross product z-component is within valid range [-1, 1]
+                                        cross_z = max(-1.0, min(1.0, target_cross.z))
+                                        steering_angle = float(math.asin(cross_z))
                                         
                                         # More aggressive lane change when pedestrian is close
                                         if distance_to_pedestrian < 10.0:
-                                            control.steer = steering_angle * 2.0  # Double the steering angle
+                                            # Ensure steering angle is within valid range [-1, 1]
+                                            control.steer = max(-1.0, min(1.0, steering_angle * 2.0))
                                             control.throttle = 0.3  # Moderate speed
                                             control.brake = 0.2  # Light braking
                                             print(f"\nChanging lanes to avoid pedestrian at {distance_to_pedestrian:.1f}m")
                                         else:
-                                            control.steer = steering_angle * 1.5  # Increased steering
+                                            # Ensure steering angle is within valid range [-1, 1]
+                                            control.steer = max(-1.0, min(1.0, steering_angle * 1.5))
                                             control.throttle = 0.5  # Normal speed
                                             control.brake = 0.1  # Very light braking
                                             print(f"\nPreparing to change lanes for pedestrian at {distance_to_pedestrian:.1f}m")
@@ -788,13 +793,13 @@ class CarlaSimulator:
                                         # If no safe lane change possible, try to create space
                                         if distance_to_pedestrian < 15.0:
                                             # More aggressive steering away from pedestrian
-                                            control.steer = pedestrian_side * 0.8  # Increased steering away
+                                            control.steer = max(-1.0, min(1.0, pedestrian_side * 0.8))  # Increased steering away
                                             control.throttle = 0.1  # Very slow speed
                                             control.brake = 0.4  # Stronger braking
                                             print(f"\nNo safe lane change possible, creating space near pedestrian at {distance_to_pedestrian:.1f}m")
                                         else:
                                             # Maintain distance and prepare for potential lane change
-                                            control.steer = pedestrian_side * 0.3  # Gentle steering away
+                                            control.steer = max(-1.0, min(1.0, pedestrian_side * 0.3))  # Gentle steering away
                                             control.throttle = 0.3  # Reduced speed
                                             control.brake = 0.2  # Moderate braking
                                             print(f"\nMaintaining safe distance from pedestrian at {distance_to_pedestrian:.1f}m")
