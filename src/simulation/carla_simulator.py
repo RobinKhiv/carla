@@ -761,11 +761,14 @@ class CarlaSimulator:
                                     raise
                                 
                                 # Print vehicle state
-                                print(f"\rSpeed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
-                                      f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
-                                      f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
-                                      f"Steering: {control.steer:.2f}, Epsilon: {self.rl_agent.epsilon:.2f}, "
-                                      f"Loss: {loss:.4f if loss is not None else 'N/A'}", end="")
+                                try:
+                                    print(f"\rSpeed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
+                                          f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
+                                          f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
+                                          f"Steering: {control.steer:.2f}, Epsilon: {self.rl_agent.epsilon:.2f}, "
+                                          f"Loss: {loss:.4f if loss is not None else 'N/A'}", end="")
+                                except Exception as e:
+                                    print(f"Error printing vehicle state: {e}")
                     except Exception as e:
                         print(f"Error in waypoint handling: {e}")
                         raise
