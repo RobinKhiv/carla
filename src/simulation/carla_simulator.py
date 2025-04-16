@@ -242,7 +242,7 @@ class CarlaSimulator:
                 return
             
             # Configure traffic manager
-            self.traffic_manager.set_global_distance_to_leading_vehicle(5.0)  # Increased from 2.0 to 5.0
+            self.traffic_manager.set_global_distance_to_leading_vehicle(5.0)
             self.traffic_manager.set_synchronous_mode(True)
             self.traffic_manager.set_random_device_seed(0)
             self.traffic_manager.set_hybrid_physics_mode(True)
@@ -270,7 +270,7 @@ class CarlaSimulator:
                     # Check for collisions at spawn point
                     collision = False
                     for actor in self.world.get_actors():
-                        if actor.get_location().distance(spawn_point.location) < 10.0:  # Increased from 5.0 to 10.0
+                        if actor.get_location().distance(spawn_point.location) < 10.0:
                             collision = True
                             break
                     
@@ -281,9 +281,9 @@ class CarlaSimulator:
                             vehicle.set_autopilot(True, self.traffic_manager.get_port())
                             
                             # Configure traffic manager settings
-                            self.traffic_manager.vehicle_percentage_speed_difference(vehicle, 30.0)  # 30% slower
-                            self.traffic_manager.auto_lane_change(vehicle, False)  # Disable automatic lane changes
-                            self.traffic_manager.distance_to_leading_vehicle(vehicle, 5.0)  # Increased following distance
+                            self.traffic_manager.vehicle_percentage_speed_difference(vehicle, 30.0)
+                            self.traffic_manager.auto_lane_change(vehicle, False)
+                            self.traffic_manager.distance_to_leading_vehicle(vehicle, 5.0)
                             
                             # Mark this lane as used
                             used_lanes.add(lane_id)
@@ -301,7 +301,7 @@ class CarlaSimulator:
                 print(f"Found {len(walker_bp)} pedestrian blueprints")
                 
                 # Get all waypoints in the map
-                waypoints = self.world.get_map().generate_waypoints(1.0)  # 1.0 meters apart
+                waypoints = self.world.get_map().generate_waypoints(1.0)
                 print(f"Total waypoints found: {len(waypoints)}")
                 
                 # Filter waypoints that are in downtown areas (not highways)
@@ -323,9 +323,13 @@ class CarlaSimulator:
                 def try_spawn_pedestrian(spawn_point, waypoint):
                     nonlocal pedestrians_spawned
                     try:
-                        # Check for collisions
-                        if any(actor.get_location().distance(spawn_point.location) < 2.0 
+                        # Check for collisions with a larger radius
+                        if any(actor.get_location().distance(spawn_point.location) < 3.0 
                               for actor in self.world.get_actors()):
+                            return False
+                        
+                        # Check if the spawn point is on a valid surface
+                        if not self.world.get_map().get_waypoint(spawn_point.location):
                             return False
                         
                         walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
@@ -344,7 +348,7 @@ class CarlaSimulator:
                     return False
                 
                 # Spawn pedestrians in downtown areas
-                num_sections = 5  # 5 different downtown sections
+                num_sections = 10  # Increased from 5 to 10 sections
                 pedestrians_per_section = 2  # 2 pedestrians per section
                 
                 for section in range(num_sections):
@@ -364,40 +368,20 @@ class CarlaSimulator:
                         offset = side * 2.0  # Fixed 2m offset from center
                         
                         spawn_point = carla.Transform()
-                        spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 5.0)  # 5m spacing
+                        spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 5.0)
                         spawn_point.location.z += 0.5
                         
-                        if try_spawn_pedestrian(spawn_point, waypoint):
-                            print(f"Spawned pedestrian on {'right' if side > 0 else 'left'} side of road")
+                        # Try up to 3 different positions if spawning fails
+                        for attempt in range(3):
+                            if try_spawn_pedestrian(spawn_point, waypoint):
+                                print(f"Spawned pedestrian on {'right' if side > 0 else 'left'} side of road")
+                                break
+                            else:
+                                # Try a slightly different position
+                                spawn_point.location += carla.Location(0, 0, 0.1)  # Move up slightly
                     
                     # Move to next waypoint for next section
-                    next_waypoints = waypoint.next(50.0)  # 50m between sections
-                    if next_waypoints:
-                        waypoint = random.choice(next_waypoints)
-                
-                # Additional random pedestrian spawning in downtown
-                print("\nAttempting additional random pedestrian spawning in downtown...")
-                for _ in range(5):  # 5 additional pedestrians
-                    waypoint = random.choice(downtown_waypoints)
-                    spawn_location = waypoint.transform.location
-                    
-                    # Calculate road direction and perpendicular
-                    road_direction = waypoint.transform.get_forward_vector()
-                    perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
-                    
-                    # Choose one side of the road randomly
-                    side = 1 if random.random() > 0.5 else -1
-                    offset = side * 2.0  # Fixed 2m offset from center
-                    
-                    spawn_point = carla.Transform()
-                    spawn_point.location = spawn_location + perpendicular * offset
-                    spawn_point.location.z += 0.5
-                    
-                    if try_spawn_pedestrian(spawn_point, waypoint):
-                        print(f"Spawned random pedestrian on {'right' if side > 0 else 'left'} side of road")
-                    
-                    # Move to next waypoint
-                    next_waypoints = waypoint.next(30.0)  # 30m between random spawns
+                    next_waypoints = waypoint.next(30.0)  # Reduced from 50m to 30m between sections
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
