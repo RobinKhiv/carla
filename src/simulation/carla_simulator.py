@@ -692,7 +692,8 @@ class CarlaSimulator:
                                         self.rl_agent.remember(state, action, reward, next_state, False)
                                         loss = self.rl_agent.train()
                                         
-                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f}")
+                                        # Print RL agent status
+                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
                                     except Exception as e:
                                         print(f"Error in RL+ML navigation: {e}")
                                         # Fall back to obstacle avoidance if RL+ML fails
@@ -716,7 +717,8 @@ class CarlaSimulator:
                                         self.rl_agent.remember(state, action, reward, next_state, False)
                                         loss = self.rl_agent.train()
                                         
-                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f}")
+                                        # Print RL agent status
+                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
                                     except Exception as e:
                                         print(f"Error in RL agent: {e}")
                                         # Fall back to obstacle avoidance if RL fails
@@ -768,7 +770,7 @@ class CarlaSimulator:
                                       f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
                                       f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
                                       f"Steering: {control.steer:.2f}, Epsilon: {self.rl_agent.epsilon:.2f}, "
-                                      f"Loss: {loss if loss is not None else 0.0:.4f}", end="")
+                                      f"Loss: {loss:.4f if loss is not None else 'N/A'}", end="")
                     except Exception as e:
                         print(f"Error in waypoint handling: {e}")
                         raise
