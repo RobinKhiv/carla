@@ -32,6 +32,19 @@ class CarlaSimulator:
             self.throttle = 0.0  # Initialize throttle attribute
             self.brake = 0.0     # Initialize brake attribute
             
+            # Initialize reinforcement learning agent with ethical priorities
+            ethical_priorities = EthicalPriorities(
+                pedestrian_weight=1.0,  # High priority for pedestrian safety
+                passenger_weight=1.0,   # Equal priority for passenger safety
+                property_weight=0.5,    # Lower priority for property damage
+                traffic_law_weight=0.8  # High priority for traffic laws
+            )
+            self.rl_agent = RLEthicalAgent(
+                state_size=5,  # Speed, nearby actors, traffic light, next waypoint x, y
+                action_size=9,  # 3 throttle levels × 3 steering levels
+                ethical_priorities=ethical_priorities
+            )
+            
         except Exception as e:
             print(f"Error initializing CARLA simulator: {e}")
             raise
@@ -593,19 +606,6 @@ class CarlaSimulator:
             if not self.setup_camera():
                 print("Warning: Camera setup failed, continuing without camera")
             
-            # Initialize reinforcement learning agent with ethical priorities
-            ethical_priorities = EthicalPriorities(
-                pedestrian_weight=1.0,  # High priority for pedestrian safety
-                passenger_weight=1.0,   # Equal priority for passenger safety
-                property_weight=0.5,    # Lower priority for property damage
-                traffic_law_weight=0.8  # High priority for traffic laws
-            )
-            self.rl_agent = RLEthicalAgent(
-                state_size=5,  # Speed, nearby actors, traffic light, next waypoint x, y
-                action_size=9,  # 3 throttle levels × 3 steering levels
-                ethical_priorities=ethical_priorities
-            )
-            
             # Configure traffic manager for ego vehicle
             self.traffic_manager.ignore_lights_percentage(self.vehicle, 0)  # Always obey traffic lights
             self.traffic_manager.vehicle_percentage_speed_difference(self.vehicle, 0)  # Maintain normal speed
@@ -628,182 +628,238 @@ class CarlaSimulator:
                     self.update_camera()
                     
                     # Get vehicle state
-                    vehicle_location = self.vehicle.get_location()
-                    vehicle_velocity = self.vehicle.get_velocity()
-                    speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6  # Convert to km/h
+                    try:
+                        vehicle_location = self.vehicle.get_location()
+                        vehicle_velocity = self.vehicle.get_velocity()
+                        speed = math.sqrt(vehicle_velocity.x**2 + vehicle_velocity.y**2 + vehicle_velocity.z**2) * 3.6  # Convert to km/h
+                    except Exception as e:
+                        print(f"Error getting vehicle state: {e}")
+                        raise
                     
                     # Get current waypoint and next waypoints
-                    current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
-                    if current_waypoint:
-                        # Get next waypoints for navigation
-                        next_waypoints = current_waypoint.next(5.0)  # Look 5 meters ahead
-                        
-                        if next_waypoints:
-                            # Use CARLA's built-in navigation
-                            next_waypoint = next_waypoints[0]
+                    try:
+                        current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
+                        if current_waypoint:
+                            # Get next waypoints for navigation
+                            next_waypoints = current_waypoint.next(5.0)  # Look 5 meters ahead
                             
-                            # Check for obstacles using CARLA's built-in system
-                            nearby_actors = self.world.get_actors()
-                            
-                            # Check for pedestrians in front
-                            pedestrian_in_path = False
-                            pedestrian_location = None
-                            distance_to_pedestrian = float('inf')  # Initialize with a large value
-                            
-                            for actor in nearby_actors.filter('walker.*'):
-                                actor_location = actor.get_location()
-                                distance = float(vehicle_location.distance(actor_location))  # Convert to float
+                            if next_waypoints:
+                                # Use CARLA's built-in navigation
+                                next_waypoint = next_waypoints[0]
                                 
-                                if distance < 20.0:  # Check within 20 meters
-                                    # Calculate if pedestrian is in vehicle's path
-                                    vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                                    actor_direction = actor_location - vehicle_location
-                                    actor_direction = actor_direction.make_unit_vector()
-                                    
-                                    # If pedestrian is in front (within 30 degrees)
-                                    if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
-                                        pedestrian_in_path = True
-                                        pedestrian_location = actor_location
-                                        distance_to_pedestrian = distance  # Store the float distance
-                                        break
-                            
-                            # Initialize control with default values
-                            control = carla.VehicleControl()
-                            control.throttle = 0.0
-                            control.steer = 0.0
-                            control.brake = 0.0
-                            control.hand_brake = False
-                            control.reverse = False
-                            
-                            # Get state for RL agent
-                            state = self.rl_agent.get_state(self.vehicle, self.world)
-                            
-                            # Get obstacle avoidance predictions
-                            obstacles = self.detect_obstacles()
-                            
-                            # Get next waypoint location
-                            next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
-                            next_waypoint_location = next_waypoint.transform.location
-                            
-                            # Get obstacle avoidance control values
-                            throttle, brake, steer = self.obstacle_avoidance.predict_control(
-                                vehicle_location,
-                                vehicle_velocity,
-                                self.vehicle.get_transform().rotation,
-                                obstacles,
-                                next_waypoint_location
-                            )
-                            
-                            if pedestrian_in_path and pedestrian_location:
-                                # Get current waypoint
-                                current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
+                                # Check for obstacles using CARLA's built-in system
+                                nearby_actors = self.world.get_actors()
                                 
-                                if current_waypoint:
-                                    # Get all possible next waypoints
-                                    next_waypoints = current_waypoint.next(5.0)
+                                # Check for pedestrians in front
+                                pedestrian_in_path = False
+                                pedestrian_location = None
+                                distance_to_pedestrian = float('inf')  # Initialize with a large value
+                                
+                                for actor in nearby_actors.filter('walker.*'):
+                                    actor_location = actor.get_location()
+                                    distance = float(vehicle_location.distance(actor_location))  # Convert to float
                                     
-                                    if next_waypoints:
-                                        # Find the best waypoint to avoid the pedestrian
-                                        best_waypoint = None
-                                        max_pedestrian_distance = 0.0
+                                    if distance < 20.0:  # Check within 20 meters
+                                        # Calculate if pedestrian is in vehicle's path
+                                        vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                                        actor_direction = actor_location - vehicle_location
+                                        actor_direction = actor_direction.make_unit_vector()
                                         
-                                        for waypoint in next_waypoints:
-                                            # Calculate distance from waypoint to pedestrian
-                                            waypoint_location = waypoint.transform.location
-                                            pedestrian_distance = float(waypoint_location.distance(pedestrian_location))
-                                            
-                                            if pedestrian_distance > max_pedestrian_distance:
-                                                max_pedestrian_distance = pedestrian_distance
-                                                best_waypoint = waypoint
+                                        # If pedestrian is in front (within 30 degrees)
+                                        if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
+                                            pedestrian_in_path = True
+                                            pedestrian_location = actor_location
+                                            distance_to_pedestrian = distance  # Store the float distance
+                                            break
+                                
+                                # Initialize control with default values
+                                control = carla.VehicleControl()
+                                control.throttle = 0.0
+                                control.steer = 0.0
+                                control.brake = 0.0
+                                control.hand_brake = False
+                                control.reverse = False
+                                
+                                # Get state for RL agent
+                                try:
+                                    state = self.rl_agent.get_state(self.vehicle, self.world)
+                                except Exception as e:
+                                    print(f"Error getting RL agent state: {e}")
+                                    raise
+                                
+                                # Get obstacle avoidance predictions
+                                try:
+                                    obstacles = self.detect_obstacles()
+                                except Exception as e:
+                                    print(f"Error detecting obstacles: {e}")
+                                    raise
+                                
+                                # Get next waypoint location
+                                next_waypoint = self.world.get_map().get_waypoint(vehicle_location).next(5.0)[0]
+                                next_waypoint_location = next_waypoint.transform.location
+                                
+                                # Get obstacle avoidance control values
+                                try:
+                                    throttle, brake, steer = self.obstacle_avoidance.predict_control(
+                                        vehicle_location,
+                                        vehicle_velocity,
+                                        self.vehicle.get_transform().rotation,
+                                        obstacles,
+                                        next_waypoint_location
+                                    )
+                                except Exception as e:
+                                    print(f"Error getting obstacle avoidance control: {e}")
+                                    raise
+                                
+                                if pedestrian_in_path and pedestrian_location:
+                                    # Get current waypoint
+                                    current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
+                                    
+                                    if current_waypoint:
+                                        # Get all possible next waypoints
+                                        next_waypoints = current_waypoint.next(5.0)
                                         
-                                        if best_waypoint:
-                                            # Calculate direction to best waypoint
-                                            waypoint_direction = best_waypoint.transform.location - vehicle_location
-                                            waypoint_direction = waypoint_direction.make_unit_vector()
+                                        if next_waypoints:
+                                            # Find the best waypoint to avoid the pedestrian
+                                            best_waypoint = None
+                                            max_pedestrian_distance = 0.0
                                             
-                                            # Calculate steering angle
-                                            vehicle_forward = self.vehicle.get_transform().get_forward_vector()
-                                            cross_product = vehicle_forward.cross(waypoint_direction)
-                                            steering_angle = float(math.asin(cross_product.z))
+                                            for waypoint in next_waypoints:
+                                                # Calculate distance from waypoint to pedestrian
+                                                waypoint_location = waypoint.transform.location
+                                                pedestrian_distance = float(waypoint_location.distance(pedestrian_location))
+                                                
+                                                if pedestrian_distance > max_pedestrian_distance:
+                                                    max_pedestrian_distance = pedestrian_distance
+                                                    best_waypoint = waypoint
                                             
-                                            # Combine controls from all systems
-                                            control.steer = (steering_angle + steer) / 2
-                                            control.throttle = (0.8 + throttle) / 2
-                                            control.brake = brake
-                                            
-                                            print(f"\nNavigating around pedestrian at {max_pedestrian_distance:.1f}m")
+                                            if best_waypoint:
+                                                # Calculate direction to best waypoint
+                                                waypoint_direction = best_waypoint.transform.location - vehicle_location
+                                                waypoint_direction = waypoint_direction.make_unit_vector()
+                                                
+                                                # Calculate steering angle
+                                                vehicle_forward = self.vehicle.get_transform().get_forward_vector()
+                                                cross_product = vehicle_forward.cross(waypoint_direction)
+                                                steering_angle = float(math.asin(cross_product.z))
+                                                
+                                                # Combine controls from all systems
+                                                control.steer = (steering_angle + steer) / 2
+                                                control.throttle = (0.8 + throttle) / 2
+                                                control.brake = brake
+                                                
+                                                print(f"\nNavigating around pedestrian at {max_pedestrian_distance:.1f}m")
+                                            else:
+                                                # If no good waypoint found, use combined RL and obstacle avoidance
+                                                try:
+                                                    action = self.rl_agent.select_action(state)
+                                                    
+                                                    throttle_level = action // 3
+                                                    steer_level = action % 3
+                                                    
+                                                    control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
+                                                    control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                    control.brake = brake
+                                                except Exception as e:
+                                                    print(f"Error selecting RL action: {e}")
+                                                    raise
                                         else:
-                                            # If no good waypoint found, use combined RL and obstacle avoidance
-                                            action = self.rl_agent.select_action(state)
-                                            
-                                            throttle_level = action // 3
-                                            steer_level = action % 3
-                                            
-                                            control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
-                                            control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
-                                            control.brake = brake
-                                    else:
-                                        # If no waypoints found, use combined RL and obstacle avoidance
+                                            # If no waypoints found, use combined RL and obstacle avoidance
+                                            try:
+                                                action = self.rl_agent.select_action(state)
+                                                
+                                                throttle_level = action // 3
+                                                steer_level = action % 3
+                                                
+                                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
+                                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
+                                                control.brake = brake
+                                            except Exception as e:
+                                                print(f"Error selecting RL action: {e}")
+                                                raise
+                                else:
+                                    # Normal driving conditions - combine all systems
+                                    try:
                                         action = self.rl_agent.select_action(state)
-                                        
                                         throttle_level = action // 3
                                         steer_level = action % 3
                                         
                                         control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
                                         control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
                                         control.brake = brake
-                            else:
-                                # Normal driving conditions - combine all systems
-                                action = self.rl_agent.select_action(state)
-                                throttle_level = action // 3
-                                steer_level = action % 3
+                                    except Exception as e:
+                                        print(f"Error selecting RL action: {e}")
+                                        raise
                                 
-                                control.throttle = ([0.0, 0.5, 1.0][throttle_level] + throttle) / 2
-                                control.steer = ([-0.5, 0.0, 0.5][steer_level] + steer) / 2
-                                control.brake = brake
-                            
-                            # Apply control to vehicle
-                            self.vehicle.apply_control(control)
-                            
-                            # Get next state for RL
-                            next_state = self.rl_agent.get_state(self.vehicle, self.world)
-                            
-                            # Calculate reward based on ethical considerations
-                            reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
-                            
-                            # Additional reward for successful pedestrian avoidance
-                            if pedestrian_in_path and distance_to_pedestrian > 5.0:
-                                reward += 0.5  # Reward for finding a clear path around pedestrian
-                            
-                            total_reward += reward
-                            
-                            # Check if episode is done
-                            done = False
-                            if self.vehicle.get_velocity().length() < 0.1:  # Vehicle stopped
-                                done = True
-                            
-                            # Store experience
-                            self.rl_agent.remember(state, action, reward, next_state, done)
-                            
-                            # Train the agent
-                            loss = self.rl_agent.train()
-                            
-                            # Update target network periodically
-                            if episode % 10 == 0:
-                                self.rl_agent.update_target_network()
-                            
-                            # Print vehicle state
-                            print(f"\rEpisode: {episode}, Total Reward: {total_reward:.2f}, "
-                                  f"Speed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
-                                  f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
-                                  f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
-                                  f"Steering: {control.steer:.2f}, Epsilon: {self.rl_agent.epsilon:.2f}, "
-                                  f"Loss: {loss if loss is not None else 0.0:.4f}", end="")
-                            
-                            if done:
-                                episode += 1
-                                total_reward = 0
-                                print()  # New line for next episode
+                                # Apply control to vehicle
+                                try:
+                                    self.vehicle.apply_control(control)
+                                except Exception as e:
+                                    print(f"Error applying control: {e}")
+                                    raise
+                                
+                                # Get next state for RL
+                                try:
+                                    next_state = self.rl_agent.get_state(self.vehicle, self.world)
+                                except Exception as e:
+                                    print(f"Error getting next state: {e}")
+                                    raise
+                                
+                                # Calculate reward based on ethical considerations
+                                try:
+                                    reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
+                                except Exception as e:
+                                    print(f"Error calculating reward: {e}")
+                                    raise
+                                
+                                # Additional reward for successful pedestrian avoidance
+                                if pedestrian_in_path and distance_to_pedestrian > 5.0:
+                                    reward += 0.5  # Reward for finding a clear path around pedestrian
+                                
+                                total_reward += reward
+                                
+                                # Check if episode is done
+                                done = False
+                                if self.vehicle.get_velocity().length() < 0.1:  # Vehicle stopped
+                                    done = True
+                                
+                                # Store experience
+                                try:
+                                    self.rl_agent.remember(state, action, reward, next_state, done)
+                                except Exception as e:
+                                    print(f"Error storing experience: {e}")
+                                    raise
+                                
+                                # Train the agent
+                                try:
+                                    loss = self.rl_agent.train()
+                                except Exception as e:
+                                    print(f"Error training agent: {e}")
+                                    raise
+                                
+                                # Update target network periodically
+                                if episode % 10 == 0:
+                                    try:
+                                        self.rl_agent.update_target_network()
+                                    except Exception as e:
+                                        print(f"Error updating target network: {e}")
+                                        raise
+                                
+                                # Print vehicle state
+                                print(f"\rEpisode: {episode}, Total Reward: {total_reward:.2f}, "
+                                      f"Speed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
+                                      f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
+                                      f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
+                                      f"Steering: {control.steer:.2f}, Epsilon: {self.rl_agent.epsilon:.2f}, "
+                                      f"Loss: {loss if loss is not None else 0.0:.4f}", end="")
+                                
+                                if done:
+                                    episode += 1
+                                    total_reward = 0
+                                    print()  # New line for next episode
+                    except Exception as e:
+                        print(f"Error in waypoint handling: {e}")
+                        raise
                     
                 except Exception as e:
                     print(f"Error in simulation loop: {e}")
