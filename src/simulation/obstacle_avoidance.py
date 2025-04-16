@@ -48,52 +48,52 @@ class ObstacleAvoidance:
         X.append([0.8, 1.0, 0.0, 0.0, 0.0])  # high speed, no obstacles
         y.append([0.1, 0.0, 0.0])  # throttle, brake, steer
         
-        # Case 4: Pedestrian directly ahead - emergency stop and steer
-        X.append([0.5, 0.1, 0.0, 0.0, 1.0])  # medium speed, pedestrian very close
-        y.append([0.0, 0.8, -0.8])  # full brake, strong steer left
+        # Case 4: Pedestrian during right turn - early detection
+        X.append([0.5, 0.3, 0.4, 0.0, 1.0])  # medium speed, turning right, pedestrian ahead
+        y.append([0.1, 0.6, -0.7])  # reduce speed, brake, steer left to avoid
         
-        # Case 5: Pedestrian directly ahead - emergency stop and steer
-        X.append([0.5, 0.1, 0.0, 0.0, 1.0])  # medium speed, pedestrian very close
-        y.append([0.0, 0.8, 0.8])  # full brake, strong steer right
+        # Case 5: Pedestrian during left turn - early detection
+        X.append([0.5, 0.3, -0.4, 0.0, 1.0])  # medium speed, turning left, pedestrian ahead
+        y.append([0.1, 0.6, 0.7])  # reduce speed, brake, steer right to avoid
         
-        # Case 6: Pedestrian slightly to the left - steer right
-        X.append([0.5, 0.2, -0.2, 0.0, 1.0])  # medium speed, pedestrian left
-        y.append([0.2, 0.4, 0.7])  # moderate brake, strong steer right
+        # Case 6: Pedestrian in curve - gradual avoidance
+        X.append([0.4, 0.4, 0.3, 0.0, 1.0])  # medium speed, in curve, pedestrian ahead
+        y.append([0.2, 0.5, -0.6])  # moderate speed, brake, gradual steer left
         
-        # Case 7: Pedestrian slightly to the right - steer left
-        X.append([0.5, 0.2, 0.2, 0.0, 1.0])  # medium speed, pedestrian right
-        y.append([0.2, 0.4, -0.7])  # moderate brake, strong steer left
+        # Case 7: Pedestrian in curve - gradual avoidance
+        X.append([0.4, 0.4, -0.3, 0.0, 1.0])  # medium speed, in curve, pedestrian ahead
+        y.append([0.2, 0.5, 0.6])  # moderate speed, brake, gradual steer right
         
-        # Case 8: Multiple pedestrians ahead - emergency maneuver
-        X.append([0.6, 0.15, 0.0, 0.0, 1.0])  # medium-high speed, multiple pedestrians
-        y.append([0.0, 0.9, -0.9])  # full brake, maximum steer left
+        # Case 8: Pedestrian during sharp turn - emergency maneuver
+        X.append([0.3, 0.2, 0.6, 0.0, 1.0])  # medium speed, sharp turn, pedestrian close
+        y.append([0.0, 0.8, -0.8])  # full brake, maximum steer left
         
-        # Case 9: Multiple pedestrians ahead - emergency maneuver
-        X.append([0.6, 0.15, 0.0, 0.0, 1.0])  # medium-high speed, multiple pedestrians
-        y.append([0.0, 0.9, 0.9])  # full brake, maximum steer right
+        # Case 9: Pedestrian during sharp turn - emergency maneuver
+        X.append([0.3, 0.2, -0.6, 0.0, 1.0])  # medium speed, sharp turn, pedestrian close
+        y.append([0.0, 0.8, 0.8])  # full brake, maximum steer right
         
-        # Case 10: High speed with pedestrian ahead - emergency stop
-        X.append([0.8, 0.1, 0.0, 0.0, 1.0])  # high speed, pedestrian very close
+        # Case 10: Multiple pedestrians in curve - early detection
+        X.append([0.4, 0.5, 0.3, 0.0, 1.0])  # medium speed, in curve, multiple pedestrians
+        y.append([0.1, 0.7, -0.7])  # reduce speed, strong brake, strong steer left
+        
+        # Case 11: Multiple pedestrians in curve - early detection
+        X.append([0.4, 0.5, -0.3, 0.0, 1.0])  # medium speed, in curve, multiple pedestrians
+        y.append([0.1, 0.7, 0.7])  # reduce speed, strong brake, strong steer right
+        
+        # Case 12: High speed in curve with pedestrian - emergency stop
+        X.append([0.7, 0.2, 0.4, 0.0, 1.0])  # high speed, in curve, pedestrian close
         y.append([0.0, 1.0, 0.0])  # full brake, no steer (emergency stop)
         
-        # Case 11: Pedestrian crossing from left - steer right
-        X.append([0.5, 0.2, -0.3, 0.0, 1.0])  # medium speed, pedestrian crossing left
-        y.append([0.1, 0.5, 0.8])  # strong brake, maximum steer right
+        # Case 13: Pedestrian crossing during turn - early reaction
+        X.append([0.4, 0.4, 0.2, 0.0, 1.0])  # medium speed, turning, pedestrian crossing
+        y.append([0.1, 0.6, -0.6])  # reduce speed, brake, steer left
         
-        # Case 12: Pedestrian crossing from right - steer left
-        X.append([0.5, 0.2, 0.3, 0.0, 1.0])  # medium speed, pedestrian crossing right
-        y.append([0.1, 0.5, -0.8])  # strong brake, maximum steer left
+        # Case 14: Pedestrian crossing during turn - early reaction
+        X.append([0.4, 0.4, -0.2, 0.0, 1.0])  # medium speed, turning, pedestrian crossing
+        y.append([0.1, 0.6, 0.6])  # reduce speed, brake, steer right
         
-        # Case 13: Pedestrian cluster in middle - slow and steer
-        X.append([0.4, 0.15, 0.0, 0.0, 1.0])  # medium speed, pedestrian cluster
-        y.append([0.0, 0.7, -0.7])  # strong brake, strong steer left
-        
-        # Case 14: Pedestrian cluster in middle - slow and steer
-        X.append([0.4, 0.15, 0.0, 0.0, 1.0])  # medium speed, pedestrian cluster
-        y.append([0.0, 0.7, 0.7])  # strong brake, strong steer right
-        
-        # Case 15: Complex scenario with vehicles and pedestrians
-        X.append([0.6, 0.2, 0.3, 0.3, 1.0])  # medium-high speed, mixed obstacles
+        # Case 15: Complex scenario with vehicles and pedestrians in curve
+        X.append([0.5, 0.3, 0.3, 0.3, 1.0])  # medium speed, in curve, mixed obstacles
         y.append([0.0, 0.8, -0.8])  # full brake, maximum steer left
         
         # Convert to tensors
