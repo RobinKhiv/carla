@@ -233,7 +233,7 @@ class CarlaSimulator:
         """Spawn traffic and create specific scenarios for testing ethical decision making."""
         try:
             # Get vehicle blueprints
-            vehicle_bp = self.world.get_blueprint_library().filter('vehicle.*')
+            vehicle_bp = self.world.get_blueprint_library().filter('vehicle.tesla.model3')[0]
             
             # Get spawn points
             spawn_points = self.world.get_map().get_spawn_points()
@@ -242,35 +242,53 @@ class CarlaSimulator:
                 return
             
             # Configure traffic manager
-            self.traffic_manager.set_global_distance_to_leading_vehicle(2.0)
+            self.traffic_manager.set_global_distance_to_leading_vehicle(5.0)  # Increased from 2.0 to 5.0
             self.traffic_manager.set_synchronous_mode(True)
             self.traffic_manager.set_random_device_seed(0)
             self.traffic_manager.set_hybrid_physics_mode(True)
             self.traffic_manager.set_hybrid_physics_radius(70.0)
             
-            # Spawn vehicles
+            # Spawn vehicles with proper lane spacing
             vehicles_spawned = 0
+            used_lanes = set()  # Track which lanes have vehicles
+            
             for i in range(min(num_vehicles, len(spawn_points))):
                 try:
+                    spawn_point = spawn_points[i]
+                    
+                    # Get the waypoint at this spawn point
+                    waypoint = self.world.get_map().get_waypoint(spawn_point.location)
+                    if not waypoint:
+                        continue
+                    
+                    # Check if this lane is already occupied
+                    lane_id = (waypoint.road_id, waypoint.lane_id)
+                    if lane_id in used_lanes:
+                        print(f"Skipping spawn point {i} - lane already occupied")
+                        continue
+                    
                     # Check for collisions at spawn point
                     collision = False
                     for actor in self.world.get_actors():
-                        if actor.get_location().distance(spawn_points[i].location) < 5.0:
+                        if actor.get_location().distance(spawn_point.location) < 10.0:  # Increased from 5.0 to 10.0
                             collision = True
                             break
                     
                     if not collision:
-                        vehicle = self.world.get_blueprint_library().filter('vehicle.tesla.model3')[0]
-                        vehicle = self.world.spawn_actor(vehicle, spawn_points[i])
+                        vehicle = self.world.spawn_actor(vehicle_bp, spawn_point)
                         if vehicle is not None:
                             # Set autopilot with traffic manager
                             vehicle.set_autopilot(True, self.traffic_manager.get_port())
-                            # Set speed limit
+                            
+                            # Configure traffic manager settings
                             self.traffic_manager.vehicle_percentage_speed_difference(vehicle, 30.0)  # 30% slower
-                            # Set collision detection
-                            self.traffic_manager.auto_lane_change(vehicle, False)
-                            self.traffic_manager.distance_to_leading_vehicle(vehicle, 2.0)
+                            self.traffic_manager.auto_lane_change(vehicle, False)  # Disable automatic lane changes
+                            self.traffic_manager.distance_to_leading_vehicle(vehicle, 5.0)  # Increased following distance
+                            
+                            # Mark this lane as used
+                            used_lanes.add(lane_id)
                             vehicles_spawned += 1
+                            print(f"Spawned vehicle {vehicles_spawned} in lane {lane_id}")
                 except Exception as e:
                     print(f"Warning: Failed to spawn vehicle at point {i}: {e}")
                     continue
@@ -327,7 +345,7 @@ class CarlaSimulator:
                 
                 # Spawn pedestrians in downtown areas
                 num_sections = 5  # 5 different downtown sections
-                pedestrians_per_section = 2  # Reduced to 2 pedestrians per section
+                pedestrians_per_section = 2  # 2 pedestrians per section
                 
                 for section in range(num_sections):
                     print(f"\nAttempting to spawn pedestrians in section {section + 1}")
@@ -346,20 +364,20 @@ class CarlaSimulator:
                         offset = side * 2.0  # Fixed 2m offset from center
                         
                         spawn_point = carla.Transform()
-                        spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 5.0)  # Increased spacing to 5m
+                        spawn_point.location = spawn_location + perpendicular * offset + road_direction * (i * 5.0)  # 5m spacing
                         spawn_point.location.z += 0.5
                         
                         if try_spawn_pedestrian(spawn_point, waypoint):
                             print(f"Spawned pedestrian on {'right' if side > 0 else 'left'} side of road")
                     
                     # Move to next waypoint for next section
-                    next_waypoints = waypoint.next(50.0)  # Increased to 50m between sections
+                    next_waypoints = waypoint.next(50.0)  # 50m between sections
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
                 # Additional random pedestrian spawning in downtown
                 print("\nAttempting additional random pedestrian spawning in downtown...")
-                for _ in range(5):  # Reduced to 5 additional pedestrians
+                for _ in range(5):  # 5 additional pedestrians
                     waypoint = random.choice(downtown_waypoints)
                     spawn_location = waypoint.transform.location
                     
@@ -379,7 +397,7 @@ class CarlaSimulator:
                         print(f"Spawned random pedestrian on {'right' if side > 0 else 'left'} side of road")
                     
                     # Move to next waypoint
-                    next_waypoints = waypoint.next(30.0)  # Increased to 30m between random spawns
+                    next_waypoints = waypoint.next(30.0)  # 30m between random spawns
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
