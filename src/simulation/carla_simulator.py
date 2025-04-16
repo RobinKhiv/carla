@@ -57,17 +57,13 @@ class CarlaSimulator:
             if not available_maps:
                 raise RuntimeError("No maps available in CARLA server")
             
-            # Try to load Town10 (has multi-lane highways)
+            # Try to load Town04 (has proper highways)
             try:
-                print("Loading Town10 map...")
-                self.client.load_world('Town10HD_Opt')
+                print("Loading Town04 map...")
+                self.client.load_world('Town04')
             except Exception as e:
-                print(f"Failed to load Town10, trying Town04: {e}")
-                try:
-                    self.client.load_world('Town04')
-                except Exception as e:
-                    print(f"Failed to load Town04: {e}")
-                    raise RuntimeError("Failed to load any map")
+                print(f"Failed to load Town04: {e}")
+                raise RuntimeError("Failed to load Town04 map")
             
             # Get the world
             self.world = self.client.get_world()
@@ -264,10 +260,8 @@ class CarlaSimulator:
                             break
                     
                     if not collision:
-                        vehicle = self.world.spawn_actor(
-                            random.choice(vehicle_bp),
-                            spawn_points[i]
-                        )
+                        vehicle = self.world.get_blueprint_library().filter('vehicle.tesla.model3')[0]
+                        vehicle = self.world.spawn_actor(vehicle, spawn_points[i])
                         if vehicle is not None:
                             # Set autopilot with traffic manager
                             vehicle.set_autopilot(True, self.traffic_manager.get_port())
@@ -290,14 +284,20 @@ class CarlaSimulator:
                 # Get all waypoints in the map
                 waypoints = self.world.get_map().generate_waypoints(1.0)  # 1.0 meters apart
                 
-                # Filter waypoints that are on highways and main roads
-                highway_waypoints = [wp for wp in waypoints if wp.lane_type == carla.LaneType.Driving and wp.is_junction]
+                # Filter waypoints that are on highways
+                highway_waypoints = []
+                for wp in waypoints:
+                    # Check if waypoint is on a highway (has multiple lanes)
+                    if wp.lane_type == carla.LaneType.Driving and len(wp.next(1.0)) > 1:
+                        highway_waypoints.append(wp)
                 
                 if not highway_waypoints:
                     print("Warning: No highway waypoints found")
                     return
                 
-                # Scenario 1: Pedestrians on opposite lane
+                print(f"Found {len(highway_waypoints)} highway waypoints")
+                
+                # Scenario 1: Pedestrians on highway
                 highway_waypoint = random.choice(highway_waypoints)
                 spawn_location = highway_waypoint.transform.location
                 
@@ -305,13 +305,15 @@ class CarlaSimulator:
                 road_direction = highway_waypoint.transform.get_forward_vector()
                 perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
                 
-                # Spawn pedestrians on the opposite lane
-                for i in range(3):  # 3 pedestrians on opposite lane
-                    offset = (i - 1) * 3.0  # Space them 3 meters apart
+                # Spawn pedestrians on the highway
+                for i in range(5):  # 5 pedestrians
+                    offset = (i - 2) * 2.0  # Space them 2 meters apart
                     spawn_point = carla.Transform()
-                    # Place on opposite lane (7 meters offset)
-                    spawn_point.location = spawn_location + perpendicular * 7.0 + road_direction * offset
+                    # Place on the highway
+                    spawn_point.location = spawn_location + perpendicular * 3.0 + road_direction * offset
                     spawn_point.location.z += 0.5  # Raise slightly above ground
+                    
+                    print(f"Attempting to spawn pedestrian at {spawn_point.location}")
                     
                     # Check for collisions before spawning
                     collision = False
@@ -323,89 +325,50 @@ class CarlaSimulator:
                     if not collision:
                         walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
                         if walker is not None:
-                            # Find a destination waypoint on the opposite lane
+                            # Find a destination waypoint
                             next_waypoints = highway_waypoint.next(10.0)
                             if next_waypoints:
                                 destination = random.choice(next_waypoints).transform.location
                                 destination.z = spawn_point.location.z
                                 walker.set_location(destination)
                                 pedestrians_spawned += 1
+                                print(f"Successfully spawned pedestrian {pedestrians_spawned}")
                 
-                # Scenario 2: Pedestrians crossing between lanes
-                second_waypoint = None
-                for wp in highway_waypoints:
-                    if wp.transform.location.distance(highway_waypoint.transform.location) > 50.0:
-                        second_waypoint = wp
-                        break
-                
-                if second_waypoint:
-                    spawn_location = second_waypoint.transform.location
+                # Scenario 2: More pedestrians on different highway sections
+                for _ in range(3):  # Try 3 different highway sections
+                    waypoint = random.choice(highway_waypoints)
+                    spawn_location = waypoint.transform.location
                     
-                    # Spawn pedestrians crossing between lanes
-                    for i in range(4):  # 4 pedestrians crossing
-                        angle = i * 90  # Space them 90 degrees apart
-                        distance = 1.5  # 1.5 meters from center
+                    for i in range(3):  # 3 pedestrians per section
+                        offset = (i - 1) * 3.0
                         spawn_point = carla.Transform()
-                        # Place between lanes (3.5 meters offset)
-                        spawn_point.location = spawn_location + perpendicular * 3.5 + carla.Location(
-                            distance * math.cos(math.radians(angle)),
-                            distance * math.sin(math.radians(angle)),
-                            0.5
-                        )
+                        spawn_point.location = spawn_location + perpendicular * 3.0 + road_direction * offset
+                        spawn_point.location.z += 0.5
                         
-                        # Check for collisions before spawning
-                        collision = False
-                        for actor in self.world.get_actors():
-                            if actor.get_location().distance(spawn_point.location) < 2.0:
-                                collision = True
-                                break
+                        print(f"Attempting to spawn pedestrian at {spawn_point.location}")
                         
-                        if not collision:
+                        if not any(actor.get_location().distance(spawn_point.location) < 2.0 
+                                 for actor in self.world.get_actors()):
                             walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
                             if walker is not None:
-                                # Find a destination waypoint across lanes
-                                next_waypoints = second_waypoint.next(15.0)
+                                next_waypoints = waypoint.next(15.0)
                                 if next_waypoints:
                                     destination = random.choice(next_waypoints).transform.location
                                     destination.z = spawn_point.location.z
                                     walker.set_location(destination)
                                     pedestrians_spawned += 1
-                
-                # Scenario 3: Random pedestrians along lanes
-                for _ in range(10):  # Add 10 more random pedestrians
-                    waypoint = random.choice(highway_waypoints)
-                    spawn_location = waypoint.transform.location
-                    
-                    # Randomly choose which lane to place pedestrian
-                    lane_offset = random.choice([3.5, 7.0])  # Either between lanes or on opposite lane
-                    spawn_point = carla.Transform()
-                    spawn_point.location = spawn_location + perpendicular * lane_offset
-                    spawn_point.location.z += 0.5
-                    
-                    # Check for collisions before spawning
-                    collision = False
-                    for actor in self.world.get_actors():
-                        if actor.get_location().distance(spawn_point.location) < 2.0:
-                            collision = True
-                            break
-                    
-                    if not collision:
-                        walker = self.world.spawn_actor(random.choice(walker_bp), spawn_point)
-                        if walker is not None:
-                            # Find a destination waypoint along the same lane
-                            next_waypoints = waypoint.next(20.0)
-                            if next_waypoints:
-                                destination = random.choice(next_waypoints).transform.location
-                                destination.z = spawn_point.location.z
-                                walker.set_location(destination)
-                                pedestrians_spawned += 1
+                                    print(f"Successfully spawned pedestrian {pedestrians_spawned}")
                 
                 print(f"Spawned {vehicles_spawned} vehicles and {pedestrians_spawned} pedestrians on highways")
             except Exception as e:
                 print(f"Error spawning pedestrians: {e}")
+                import traceback
+                traceback.print_exc()
             
         except Exception as e:
             print(f"Error spawning traffic: {e}")
+            import traceback
+            traceback.print_exc()
 
     def detect_obstacles(self) -> List[Tuple[np.ndarray, float, str]]:
         """Detect obstacles (vehicles and pedestrians) around the ego vehicle."""
