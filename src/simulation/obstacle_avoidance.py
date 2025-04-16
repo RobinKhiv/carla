@@ -95,6 +95,47 @@ class ObstacleAvoidance:
         # Case 15: Vehicle blocking lane - find alternative
         X.append([0.6, 0.2, -0.3, 0.0, 0.0])  # medium-high speed, blocked lane
         y.append([0.3, 0.0, 0.6])  # throttle, brake, steer right to change lane
+
+        # New cases for highway pedestrian scenarios
+        # Case 16: Line of pedestrians across highway - steer left
+        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, multiple pedestrians ahead
+        y.append([0.2, 0.3, -0.7])  # throttle, brake, strong steer left
+        
+        # Case 17: Line of pedestrians across highway - steer right
+        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, multiple pedestrians ahead
+        y.append([0.2, 0.3, 0.7])  # throttle, brake, strong steer right
+        
+        # Case 18: Pedestrian cluster in middle of road - slow and steer
+        X.append([0.4, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian cluster
+        y.append([0.1, 0.4, -0.5])  # throttle, brake, moderate steer left
+        
+        # Case 19: Pedestrian cluster in middle of road - slow and steer
+        X.append([0.4, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian cluster
+        y.append([0.1, 0.4, 0.5])  # throttle, brake, moderate steer right
+        
+        # Case 20: Random pedestrian crossing - emergency maneuver
+        X.append([0.6, 0.1, 0.0, 0.0, 1.0])  # medium-high speed, sudden pedestrian
+        y.append([0.0, 0.6, -0.8])  # throttle, brake, emergency steer left
+        
+        # Case 21: Random pedestrian crossing - emergency maneuver
+        X.append([0.6, 0.1, 0.0, 0.0, 1.0])  # medium-high speed, sudden pedestrian
+        y.append([0.0, 0.6, 0.8])  # throttle, brake, emergency steer right
+        
+        # Case 22: Multiple pedestrians with vehicle ahead - complex scenario
+        X.append([0.5, 0.2, 0.0, 0.2, 1.0])  # medium speed, mixed obstacles
+        y.append([0.2, 0.3, -0.6])  # throttle, brake, strong steer left
+        
+        # Case 23: Multiple pedestrians with vehicle ahead - complex scenario
+        X.append([0.5, 0.2, 0.0, 0.2, 1.0])  # medium speed, mixed obstacles
+        y.append([0.2, 0.3, 0.6])  # throttle, brake, strong steer right
+        
+        # Case 24: High speed with multiple pedestrians - emergency stop
+        X.append([0.8, 0.1, 0.0, 0.0, 1.0])  # high speed, multiple pedestrians
+        y.append([0.0, 0.8, 0.0])  # throttle, brake, no steer (emergency stop)
+        
+        # Case 25: Complex scenario with vehicles and pedestrians
+        X.append([0.6, 0.2, 0.3, 0.3, 1.0])  # medium-high speed, multiple obstacles
+        y.append([0.1, 0.4, -0.7])  # throttle, brake, strong steer left
         
         # Convert to tensors
         X = torch.FloatTensor(X)
