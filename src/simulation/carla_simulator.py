@@ -718,96 +718,106 @@ class CarlaSimulator:
                                     raise
                                 
                                 if pedestrian_in_path and pedestrian_location:
-                                    # Get RL agent's action based on current state
                                     try:
-                                        # Check for available space on the road
+                                        # Get current state for RL agent
+                                        state = self.rl_agent.get_state(self.vehicle, self.world)
+                                        
+                                        # Get obstacle avoidance predictions
+                                        throttle, brake, steer = self.obstacle_avoidance.predict_control(
+                                            np.array([vehicle_location.x, vehicle_location.y, vehicle_location.z]),
+                                            vehicle_speed,
+                                            np.array([0, self.vehicle.get_transform().rotation.yaw, 0]),
+                                            obstacles,
+                                            np.array([next_waypoint_location.x, next_waypoint_location.y, next_waypoint_location.z])
+                                        )
+                                        
+                                        # Get RL agent's action
+                                        action = self.rl_agent.select_action(state)
+                                        throttle_level = action // 3
+                                        steer_level = action % 3
+                                        
+                                        # Convert RL action to control values
+                                        rl_throttle = [0.0, 0.5, 1.0][throttle_level]
+                                        rl_steer = [-0.5, 0.0, 0.5][steer_level]
+                                        
+                                        # Check for available space using machine learning
                                         current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
                                         left_lane = current_waypoint.get_left_lane()
                                         right_lane = current_waypoint.get_right_lane()
                                         
-                                        # Calculate available space
+                                        # Use ML to evaluate available spaces
                                         available_space = []
                                         if left_lane and left_lane.lane_type == carla.LaneType.Driving:
-                                            # Check left lane for vehicles
-                                            left_lane_clear = True
-                                            for actor in self.world.get_actors().filter('vehicle.*'):
-                                                if actor.id != self.vehicle.id:
-                                                    actor_location = actor.get_location()
-                                                    actor_waypoint = self.world.get_map().get_waypoint(actor_location)
-                                                    if actor_waypoint and actor_waypoint.lane_id == left_lane.lane_id:
-                                                        distance = vehicle_location.distance(actor_location)
-                                                        if distance < 15.0:  # Check within 15 meters
-                                                            left_lane_clear = False
-                                                            break
+                                            # Use obstacle avoidance model to evaluate left lane
+                                            left_lane_location = left_lane.transform.location
+                                            left_lane_clear = self.obstacle_avoidance.evaluate_space(
+                                                np.array([left_lane_location.x, left_lane_location.y, left_lane_location.z]),
+                                                vehicle_speed,
+                                                obstacles
+                                            )
                                             if left_lane_clear:
                                                 available_space.append(('left', left_lane))
                                         
                                         if right_lane and right_lane.lane_type == carla.LaneType.Driving:
-                                            # Check right lane for vehicles
-                                            right_lane_clear = True
-                                            for actor in self.world.get_actors().filter('vehicle.*'):
-                                                if actor.id != self.vehicle.id:
-                                                    actor_location = actor.get_location()
-                                                    actor_waypoint = self.world.get_map().get_waypoint(actor_location)
-                                                    if actor_waypoint and actor_waypoint.lane_id == right_lane.lane_id:
-                                                        distance = vehicle_location.distance(actor_location)
-                                                        if distance < 15.0:  # Check within 15 meters
-                                                            right_lane_clear = False
-                                                            break
+                                            # Use obstacle avoidance model to evaluate right lane
+                                            right_lane_location = right_lane.transform.location
+                                            right_lane_clear = self.obstacle_avoidance.evaluate_space(
+                                                np.array([right_lane_location.x, right_lane_location.y, right_lane_location.z]),
+                                                vehicle_speed,
+                                                obstacles
+                                            )
                                             if right_lane_clear:
                                                 available_space.append(('right', right_lane))
                                         
-                                        # If we have available space, navigate through it
+                                        # Combine ML-based space evaluation with RL decisions
                                         if available_space:
-                                            # Choose the lane with more space from the pedestrian
+                                            # Choose best space using ML evaluation
                                             best_lane = None
-                                            max_distance = float('-inf')
+                                            best_score = float('-inf')
                                             
                                             for direction, lane in available_space:
                                                 lane_location = lane.transform.location
-                                                distance = pedestrian_location.distance(lane_location)
-                                                if distance > max_distance:
-                                                    max_distance = distance
+                                                # Use ML to score the space
+                                                space_score = self.obstacle_avoidance.score_space(
+                                                    np.array([lane_location.x, lane_location.y, lane_location.z]),
+                                                    np.array([pedestrian_location.x, pedestrian_location.y, pedestrian_location.z]),
+                                                    vehicle_speed
+                                                )
+                                                if space_score > best_score:
+                                                    best_score = space_score
                                                     best_lane = (direction, lane)
                                             
                                             if best_lane:
                                                 direction, target_lane = best_lane
                                                 target_location = target_lane.transform.location
+                                                
+                                                # Blend RL steering with ML-based navigation
                                                 target_direction = target_location - vehicle_location
                                                 target_direction = target_direction.make_unit_vector()
-                                                
-                                                # Calculate steering angle
                                                 vehicle_forward = self.vehicle.get_transform().get_forward_vector()
                                                 target_cross = vehicle_forward.cross(target_direction)
                                                 cross_z = max(-1.0, min(1.0, target_cross.z))
-                                                steering_angle = float(math.asin(cross_z))
+                                                ml_steer = float(math.asin(cross_z))
                                                 
-                                                # Adjust speed based on distance to pedestrian
+                                                # Combine RL and ML controls
                                                 if distance_to_pedestrian < 10.0:
-                                                    control.throttle = 0.3
-                                                    control.brake = 0.2
-                                                    control.steer = max(-1.0, min(1.0, steering_angle * 1.5))
-                                                    print(f"\nNavigating through {direction} lane to avoid pedestrian at {distance_to_pedestrian:.1f}m")
+                                                    control.throttle = (rl_throttle + throttle) / 2
+                                                    control.steer = (rl_steer + ml_steer * 1.5) / 2
+                                                    control.brake = brake
+                                                    print(f"\nML+RL: Navigating through {direction} lane at {distance_to_pedestrian:.1f}m")
                                                 else:
-                                                    control.throttle = 0.5
-                                                    control.brake = 0.1
-                                                    control.steer = max(-1.0, min(1.0, steering_angle))
-                                                    print(f"\nPreparing to navigate through {direction} lane for pedestrian at {distance_to_pedestrian:.1f}m")
+                                                    control.throttle = (rl_throttle + throttle) / 2
+                                                    control.steer = (rl_steer + ml_steer) / 2
+                                                    control.brake = brake
+                                                    print(f"\nML+RL: Preparing navigation through {direction} lane")
                                         else:
-                                            # No available space, slow down and maintain distance
-                                            if distance_to_pedestrian < 15.0:
-                                                control.throttle = 0.1
-                                                control.brake = 0.4
-                                                control.steer = 0.0  # Stay in current lane
-                                                print(f"\nNo space available, maintaining safe distance from pedestrian at {distance_to_pedestrian:.1f}m")
-                                            else:
-                                                control.throttle = 0.3
-                                                control.brake = 0.2
-                                                control.steer = 0.0  # Stay in current lane
-                                                print(f"\nMaintaining safe distance from pedestrian at {distance_to_pedestrian:.1f}m")
+                                            # No available space, use RL with obstacle avoidance
+                                            control.throttle = (rl_throttle + throttle) / 2
+                                            control.steer = (rl_steer + steer) / 2
+                                            control.brake = brake
+                                            print(f"\nML+RL: Maintaining safe distance at {distance_to_pedestrian:.1f}m")
                                         
-                                        # Update RL agent with the current state and action
-                                        action = self.rl_agent.select_action(state)
+                                        # Update RL agent with experience
                                         reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
                                         next_state = self.rl_agent.get_state(self.vehicle, self.world)
                                         self.rl_agent.remember(state, action, reward, next_state, False)
@@ -815,8 +825,8 @@ class CarlaSimulator:
                                         
                                         print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f}")
                                     except Exception as e:
-                                        print(f"Error in navigation: {e}")
-                                        # Fall back to obstacle avoidance if navigation fails
+                                        print(f"Error in ML+RL navigation: {e}")
+                                        # Fall back to obstacle avoidance if ML+RL fails
                                         control.throttle = throttle
                                         control.steer = steer
                                         control.brake = brake
