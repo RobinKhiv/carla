@@ -280,9 +280,11 @@ class CarlaSimulator:
             try:
                 # Get pedestrian blueprints
                 walker_bp = self.world.get_blueprint_library().filter('walker.pedestrian.*')
+                print(f"Found {len(walker_bp)} pedestrian blueprints")
                 
                 # Get all waypoints in the map
                 waypoints = self.world.get_map().generate_waypoints(1.0)  # 1.0 meters apart
+                print(f"Total waypoints found: {len(waypoints)}")
                 
                 # Filter waypoints that are on highways
                 highway_waypoints = []
@@ -322,7 +324,7 @@ class CarlaSimulator:
                     return False
                 
                 # Spawn pedestrians in multiple highway sections
-                num_sections = 5  # Try 5 different highway sections
+                num_sections = 20  # Try 20 different highway sections
                 pedestrians_per_section = 5  # Try to spawn 5 pedestrians per section
                 
                 for section in range(num_sections):
@@ -347,6 +349,30 @@ class CarlaSimulator:
                     
                     # Move to next waypoint for next section
                     next_waypoints = waypoint.next(50.0)  # Move 50 meters ahead
+                    if next_waypoints:
+                        waypoint = random.choice(next_waypoints)
+                
+                # Additional random pedestrian spawning
+                print("\nAttempting additional random pedestrian spawning...")
+                for _ in range(50):  # Try to spawn 50 more random pedestrians
+                    waypoint = random.choice(highway_waypoints)
+                    spawn_location = waypoint.transform.location
+                    
+                    # Calculate road direction and perpendicular
+                    road_direction = waypoint.transform.get_forward_vector()
+                    perpendicular = carla.Vector3D(-road_direction.y, road_direction.x, 0)
+                    
+                    # Try different offsets
+                    for offset in [-3.0, -1.5, 0.0, 1.5, 3.0]:
+                        spawn_point = carla.Transform()
+                        spawn_point.location = spawn_location + perpendicular * offset
+                        spawn_point.location.z += 0.5
+                        
+                        if try_spawn_pedestrian(spawn_point, waypoint):
+                            break  # Move to next attempt if successful
+                    
+                    # Move to next waypoint
+                    next_waypoints = waypoint.next(20.0)  # Move 20 meters ahead
                     if next_waypoints:
                         waypoint = random.choice(next_waypoints)
                 
