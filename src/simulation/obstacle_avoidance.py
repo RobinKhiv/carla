@@ -52,49 +52,49 @@ class ObstacleAvoidance:
         X.append([0.5, 0.2, 0.0, 0.0, 0.0])  # medium speed, vehicle close
         y.append([0.0, 0.3, 0.0])  # throttle, brake, steer
         
-        # Case 5: Pedestrian close ahead
-        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian close
-        y.append([0.0, 0.5, 0.0])  # throttle, brake, steer
-
-        # Case 6: Vehicle approaching from left
-        X.append([0.5, 0.3, -0.5, 0.0, 0.0])  # medium speed, vehicle left
-        y.append([0.0, 0.2, 0.3])  # throttle, brake, steer right
+        # Case 5: Pedestrian directly ahead - steer left
+        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian ahead
+        y.append([0.2, 0.3, -0.5])  # throttle, brake, steer left
         
-        # Case 7: Vehicle approaching from right
-        X.append([0.5, 0.3, 0.5, 0.0, 0.0])  # medium speed, vehicle right
-        y.append([0.0, 0.2, -0.3])  # throttle, brake, steer left
+        # Case 6: Pedestrian directly ahead - steer right
+        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, pedestrian ahead
+        y.append([0.2, 0.3, 0.5])  # throttle, brake, steer right
         
-        # Case 8: Multiple obstacles ahead
-        X.append([0.5, 0.2, 0.0, 0.5, 0.5])  # medium speed, multiple obstacles
-        y.append([0.0, 0.6, 0.0])  # throttle, brake, steer
+        # Case 7: Pedestrian slightly left - steer right
+        X.append([0.5, 0.3, -0.3, 0.0, 1.0])  # medium speed, pedestrian left
+        y.append([0.2, 0.2, 0.4])  # throttle, brake, steer right
         
-        # Case 9: Pedestrian crossing from left
-        X.append([0.4, 0.3, -0.4, 0.0, 1.0])  # medium speed, pedestrian left
-        y.append([0.0, 0.4, 0.2])  # throttle, brake, steer right
+        # Case 8: Pedestrian slightly right - steer left
+        X.append([0.5, 0.3, 0.3, 0.0, 1.0])  # medium speed, pedestrian right
+        y.append([0.2, 0.2, -0.4])  # throttle, brake, steer left
         
-        # Case 10: Pedestrian crossing from right
-        X.append([0.4, 0.3, 0.4, 0.0, 1.0])  # medium speed, pedestrian right
-        y.append([0.0, 0.4, -0.2])  # throttle, brake, steer left
-        
-        # Case 11: High speed with distant obstacle
-        X.append([0.8, 0.6, 0.0, 0.0, 0.0])  # high speed, distant obstacle
-        y.append([0.2, 0.1, 0.0])  # throttle, brake, steer
-        
-        # Case 12: Low speed with nearby pedestrian
-        X.append([0.2, 0.3, 0.0, 0.0, 1.0])  # low speed, nearby pedestrian
-        y.append([0.0, 0.3, 0.0])  # throttle, brake, steer
-        
-        # Case 13: Medium speed with multiple pedestrians
+        # Case 9: Multiple pedestrians ahead - steer left
         X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, multiple pedestrians
-        y.append([0.0, 0.5, 0.0])  # throttle, brake, steer
+        y.append([0.1, 0.4, -0.6])  # throttle, brake, steer left
         
-        # Case 14: High speed with emergency stop
-        X.append([0.8, 0.1, 0.0, 0.0, 1.0])  # high speed, very close obstacle
-        y.append([0.0, 1.0, 0.0])  # throttle, brake, steer
+        # Case 10: Multiple pedestrians ahead - steer right
+        X.append([0.5, 0.2, 0.0, 0.0, 1.0])  # medium speed, multiple pedestrians
+        y.append([0.1, 0.4, 0.6])  # throttle, brake, steer right
         
-        # Case 15: Complex scenario with multiple obstacles
-        X.append([0.6, 0.2, 0.3, 0.5, 0.5])  # medium-high speed, multiple obstacles
-        y.append([0.0, 0.4, -0.2])  # throttle, brake, steer
+        # Case 11: High speed with pedestrian - emergency steer
+        X.append([0.8, 0.2, 0.0, 0.0, 1.0])  # high speed, pedestrian close
+        y.append([0.0, 0.6, -0.8])  # throttle, brake, steer left
+        
+        # Case 12: High speed with pedestrian - emergency steer
+        X.append([0.8, 0.2, 0.0, 0.0, 1.0])  # high speed, pedestrian close
+        y.append([0.0, 0.6, 0.8])  # throttle, brake, steer right
+        
+        # Case 13: Pedestrian crossing from left - steer right
+        X.append([0.4, 0.3, -0.4, 0.0, 1.0])  # medium speed, pedestrian left
+        y.append([0.1, 0.3, 0.5])  # throttle, brake, steer right
+        
+        # Case 14: Pedestrian crossing from right - steer left
+        X.append([0.4, 0.3, 0.4, 0.0, 1.0])  # medium speed, pedestrian right
+        y.append([0.1, 0.3, -0.5])  # throttle, brake, steer left
+        
+        # Case 15: Complex scenario with multiple pedestrians
+        X.append([0.6, 0.2, 0.3, 0.0, 1.0])  # medium-high speed, multiple pedestrians
+        y.append([0.1, 0.4, -0.7])  # throttle, brake, steer left
         
         # Convert to tensors
         X = torch.FloatTensor(X)
