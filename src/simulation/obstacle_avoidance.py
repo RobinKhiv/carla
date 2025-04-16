@@ -96,6 +96,47 @@ class ObstacleAvoidance:
         X.append([0.5, 0.3, 0.3, 0.3, 1.0])  # medium speed, in curve, mixed obstacles
         y.append([0.0, 0.8, -0.8])  # full brake, maximum steer left
         
+        # New cases for lane changes and complex scenarios
+        # Case 16: Lane change into pedestrian - abort maneuver
+        X.append([0.5, 0.2, 0.4, 0.0, 1.0])  # medium speed, changing lanes, pedestrian in target lane
+        y.append([0.0, 0.7, -0.7])  # full brake, steer back to original lane
+        
+        # Case 17: Lane change into pedestrian - abort maneuver
+        X.append([0.5, 0.2, -0.4, 0.0, 1.0])  # medium speed, changing lanes, pedestrian in target lane
+        y.append([0.0, 0.7, 0.7])  # full brake, steer back to original lane
+        
+        # Case 18: Multiple lane changes with pedestrians
+        X.append([0.6, 0.3, 0.5, 0.0, 1.0])  # medium-high speed, multiple lane changes, pedestrian ahead
+        y.append([0.1, 0.6, -0.6])  # reduce speed, brake, steer to safe lane
+        
+        # Case 19: Multiple lane changes with pedestrians
+        X.append([0.6, 0.3, -0.5, 0.0, 1.0])  # medium-high speed, multiple lane changes, pedestrian ahead
+        y.append([0.1, 0.6, 0.6])  # reduce speed, brake, steer to safe lane
+        
+        # Case 20: Pedestrian between lanes - find safe path
+        X.append([0.4, 0.3, 0.0, 0.0, 1.0])  # medium speed, pedestrian between lanes
+        y.append([0.2, 0.5, -0.5])  # moderate speed, brake, steer to clear side
+        
+        # Case 21: Pedestrian between lanes - find safe path
+        X.append([0.4, 0.3, 0.0, 0.0, 1.0])  # medium speed, pedestrian between lanes
+        y.append([0.2, 0.5, 0.5])  # moderate speed, brake, steer to clear side
+        
+        # Case 22: High speed lane change with pedestrian - emergency maneuver
+        X.append([0.7, 0.2, 0.4, 0.0, 1.0])  # high speed, changing lanes, pedestrian in path
+        y.append([0.0, 0.9, -0.9])  # full brake, maximum steer to avoid
+        
+        # Case 23: High speed lane change with pedestrian - emergency maneuver
+        X.append([0.7, 0.2, -0.4, 0.0, 1.0])  # high speed, changing lanes, pedestrian in path
+        y.append([0.0, 0.9, 0.9])  # full brake, maximum steer to avoid
+        
+        # Case 24: Complex scenario with multiple lane changes and pedestrians
+        X.append([0.5, 0.3, 0.3, 0.3, 1.0])  # medium speed, multiple lane changes, mixed obstacles
+        y.append([0.1, 0.7, -0.7])  # reduce speed, strong brake, strong steer to safe path
+        
+        # Case 25: Complex scenario with multiple lane changes and pedestrians
+        X.append([0.5, 0.3, -0.3, 0.3, 1.0])  # medium speed, multiple lane changes, mixed obstacles
+        y.append([0.1, 0.7, 0.7])  # reduce speed, strong brake, strong steer to safe path
+        
         # Convert to tensors
         X = torch.FloatTensor(X)
         y = torch.FloatTensor(y)
