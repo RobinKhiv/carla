@@ -712,9 +712,32 @@ class CarlaSimulator:
                                         except Exception as e:
                                             print(f"Error in RL training: {e}")
                                             loss = None
+                                            reward = 0.0  # Default reward value
                                         
-                                        # Print RL agent status
-                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
+                                        # Print RL agent status with safe formatting
+                                        try:
+                                            print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
+                                        except Exception as e:
+                                            print(f"Error printing RL agent status: {e}")
+                                        
+                                        # Print vehicle state with safe formatting
+                                        try:
+                                            speed_str = f"{speed:.2f}" if speed is not None else "N/A"
+                                            x_str = f"{vehicle_location.x:.2f}" if vehicle_location is not None else "N/A"
+                                            y_str = f"{vehicle_location.y:.2f}" if vehicle_location is not None else "N/A"
+                                            throttle_str = f"{control.throttle:.2f}" if control is not None else "N/A"
+                                            brake_str = f"{control.brake:.2f}" if control is not None else "N/A"
+                                            steer_str = f"{control.steer:.2f}" if control is not None else "N/A"
+                                            epsilon_str = f"{self.rl_agent.epsilon:.2f}" if self.rl_agent is not None else "N/A"
+                                            loss_str = f"{loss:.4f}" if loss is not None else "N/A"
+                                            
+                                            print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
+                                                  f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
+                                                  f"Throttle: {throttle_str}, Brake: {brake_str}, "
+                                                  f"Steering: {steer_str}, Epsilon: {epsilon_str}, "
+                                                  f"Loss: {loss_str}", end="")
+                                        except Exception as e:
+                                            print(f"Error printing vehicle state: {e}")
                                     except Exception as e:
                                         print(f"Error in RL+ML navigation: {e}")
                                         # Fall back to obstacle avoidance if RL+ML fails
@@ -743,9 +766,32 @@ class CarlaSimulator:
                                         except Exception as e:
                                             print(f"Error in RL training: {e}")
                                             loss = None
+                                            reward = 0.0  # Default reward value
                                         
-                                        # Print RL agent status
-                                        print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
+                                        # Print RL agent status with safe formatting
+                                        try:
+                                            print(f"\nRL Agent: Action={action}, Reward={reward:.2f}, Loss={loss:.4f if loss is not None else 'N/A'}")
+                                        except Exception as e:
+                                            print(f"Error printing RL agent status: {e}")
+                                        
+                                        # Print vehicle state with safe formatting
+                                        try:
+                                            speed_str = f"{speed:.2f}" if speed is not None else "N/A"
+                                            x_str = f"{vehicle_location.x:.2f}" if vehicle_location is not None else "N/A"
+                                            y_str = f"{vehicle_location.y:.2f}" if vehicle_location is not None else "N/A"
+                                            throttle_str = f"{control.throttle:.2f}" if control is not None else "N/A"
+                                            brake_str = f"{control.brake:.2f}" if control is not None else "N/A"
+                                            steer_str = f"{control.steer:.2f}" if control is not None else "N/A"
+                                            epsilon_str = f"{self.rl_agent.epsilon:.2f}" if self.rl_agent is not None else "N/A"
+                                            loss_str = f"{loss:.4f}" if loss is not None else "N/A"
+                                            
+                                            print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
+                                                  f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
+                                                  f"Throttle: {throttle_str}, Brake: {brake_str}, "
+                                                  f"Steering: {steer_str}, Epsilon: {epsilon_str}, "
+                                                  f"Loss: {loss_str}", end="")
+                                        except Exception as e:
+                                            print(f"Error printing vehicle state: {e}")
                                     except Exception as e:
                                         print(f"Error in RL agent: {e}")
                                         # Fall back to obstacle avoidance if RL fails
@@ -759,16 +805,6 @@ class CarlaSimulator:
                                 except Exception as e:
                                     print(f"Error applying control: {e}")
                                     raise
-                                
-                                # Print vehicle state
-                                try:
-                                    print(f"\rSpeed: {speed:.2f} km/h, Position: ({vehicle_location.x:.2f}, {vehicle_location.y:.2f}), "
-                                          f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
-                                          f"Throttle: {control.throttle:.2f}, Brake: {control.brake:.2f}, "
-                                          f"Steering: {control.steer:.2f}, Epsilon: {self.rl_agent.epsilon:.2f}, "
-                                          f"Loss: {loss:.4f if loss is not None else 'N/A'}", end="")
-                                except Exception as e:
-                                    print(f"Error printing vehicle state: {e}")
                     except Exception as e:
                         print(f"Error in waypoint handling: {e}")
                         raise
