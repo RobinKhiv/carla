@@ -104,20 +104,24 @@ class ObstacleAvoidance:
                         next_waypoint_location: np.ndarray) -> np.ndarray:
         """Preprocess input data for the model."""
         # Calculate normalized speed (0 to 1)
-        normalized_speed = min(vehicle_velocity / 50.0, 1.0)  # Assuming max speed of 50 km/h
+        normalized_speed = min(float(vehicle_velocity) / 50.0, 1.0)  # Assuming max speed of 50 km/h
         
         # Calculate distance to nearest obstacle
         min_distance = 1.0  # Default to max distance
         for _, distance, _ in obstacles:
-            min_distance = min(min_distance, distance / 50.0)  # Normalize by max distance of 50m
+            min_distance = min(min_distance, float(distance) / 50.0)  # Normalize by max distance of 50m
         
         # Calculate angle to next waypoint
         vehicle_forward = np.array([
-            math.cos(math.radians(vehicle_rotation[1])),
-            math.sin(math.radians(vehicle_rotation[1])),
+            math.cos(math.radians(float(vehicle_rotation[1]))),
+            math.sin(math.radians(float(vehicle_rotation[1]))),
             0
         ])
-        direction = next_waypoint_location - vehicle_location
+        direction = np.array([
+            float(next_waypoint_location[0]) - float(vehicle_location[0]),
+            float(next_waypoint_location[1]) - float(vehicle_location[1]),
+            float(next_waypoint_location[2]) - float(vehicle_location[2])
+        ])
         direction = direction / np.linalg.norm(direction)
         angle = math.degrees(math.acos(np.dot(vehicle_forward, direction)))
         normalized_angle = min(abs(angle) / 90.0, 1.0)  # Normalize by max angle of 90 degrees
