@@ -563,6 +563,7 @@ class CarlaSimulator:
                                 # Get state for RL agent
                                 try:
                                     state = self.rl_agent.get_state(self.vehicle, self.world)
+                                    print(f"\n[DEBUG] RL State: {state}")
                                 except Exception as e:
                                     print(f"Error getting RL agent state: {e}")
                                     raise
@@ -570,6 +571,7 @@ class CarlaSimulator:
                                 # Get obstacle avoidance predictions
                                 try:
                                     obstacles = self.detect_obstacles()
+                                    print(f"\n[DEBUG] ML Obstacles: {len(obstacles)}")
                                 except Exception as e:
                                     print(f"Error detecting obstacles: {e}")
                                     raise
@@ -590,32 +592,24 @@ class CarlaSimulator:
                                         obstacles,
                                         np.array([next_waypoint_location.x, next_waypoint_location.y, next_waypoint_location.z])
                                     )
+                                    print(f"\n[DEBUG] ML Control: throttle={throttle:.2f}, brake={brake:.2f}, steer={steer:.2f}")
                                 except Exception as e:
                                     print(f"Error getting obstacle avoidance control: {e}")
                                     raise
                                 
                                 if pedestrian_in_path and pedestrian_location:
                                     try:
-                                        # Get current state for RL agent
-                                        state = self.rl_agent.get_state(self.vehicle, self.world)
-                                        
-                                        # Get obstacle avoidance predictions
-                                        throttle, brake, steer = self.obstacle_avoidance.predict_control(
-                                            np.array([vehicle_location.x, vehicle_location.y, vehicle_location.z]),
-                                            vehicle_speed,
-                                            np.array([0, self.vehicle.get_transform().rotation.yaw, 0]),
-                                            obstacles,
-                                            np.array([next_waypoint_location.x, next_waypoint_location.y, next_waypoint_location.z])
-                                        )
-                                        
                                         # Get RL agent's action
                                         action = self.rl_agent.select_action(state)
+                                        print(f"\n[DEBUG] RL Action: {action}")
+                                        
                                         throttle_level = action // 3
                                         steer_level = action % 3
                                         
                                         # Convert RL action to control values
                                         rl_throttle = [0.0, 0.5, 1.0][throttle_level]
                                         rl_steer = [-0.5, 0.0, 0.5][steer_level]
+                                        print(f"\n[DEBUG] RL Control: throttle={rl_throttle:.2f}, steer={rl_steer:.2f}")
                                         
                                         # Check for available space using ML
                                         current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
@@ -633,6 +627,7 @@ class CarlaSimulator:
                                             )
                                             if left_lane_clear:
                                                 available_space.append(('left', left_lane))
+                                                print("\n[DEBUG] ML: Left lane available")
                                         
                                         if right_lane and right_lane.lane_type == carla.LaneType.Driving:
                                             right_lane_location = right_lane.transform.location
@@ -643,6 +638,7 @@ class CarlaSimulator:
                                             )
                                             if right_lane_clear:
                                                 available_space.append(('right', right_lane))
+                                                print("\n[DEBUG] ML: Right lane available")
                                         
                                         # Combine RL decisions with space evaluation
                                         if available_space:
@@ -712,27 +708,27 @@ class CarlaSimulator:
                                         except Exception as e:
                                             print(f"Error in RL training: {e}")
                                             loss = None
-                                            reward = 0.0  # Default reward value
+                                            reward = 0.0
                                         
                                         # Print RL agent status with safe formatting
                                         try:
                                             action_str = str(action) if action is not None else "N/A"
-                                            reward_str = f"{reward:.2f}" if reward is not None else "N/A"
-                                            loss_str = f"{loss:.4f}" if loss is not None else "N/A"
+                                            reward_str = str(reward) if reward is not None else "N/A"
+                                            loss_str = str(loss) if loss is not None else "N/A"
                                             print(f"\nRL Agent: Action={action_str}, Reward={reward_str}, Loss={loss_str}")
                                         except Exception as e:
                                             print(f"Error printing RL agent status: {e}")
                                         
                                         # Print vehicle state with safe formatting
                                         try:
-                                            speed_str = f"{speed:.2f}" if speed is not None else "N/A"
-                                            x_str = f"{vehicle_location.x:.2f}" if vehicle_location is not None else "N/A"
-                                            y_str = f"{vehicle_location.y:.2f}" if vehicle_location is not None else "N/A"
-                                            throttle_str = f"{control.throttle:.2f}" if control is not None else "N/A"
-                                            brake_str = f"{control.brake:.2f}" if control is not None else "N/A"
-                                            steer_str = f"{control.steer:.2f}" if control is not None else "N/A"
-                                            epsilon_str = f"{self.rl_agent.epsilon:.2f}" if self.rl_agent is not None else "N/A"
-                                            loss_str = f"{loss:.4f}" if loss is not None else "N/A"
+                                            speed_str = str(speed) if speed is not None else "N/A"
+                                            x_str = str(vehicle_location.x) if vehicle_location is not None else "N/A"
+                                            y_str = str(vehicle_location.y) if vehicle_location is not None else "N/A"
+                                            throttle_str = str(control.throttle) if control is not None else "N/A"
+                                            brake_str = str(control.brake) if control is not None else "N/A"
+                                            steer_str = str(control.steer) if control is not None else "N/A"
+                                            epsilon_str = str(self.rl_agent.epsilon) if self.rl_agent is not None else "N/A"
+                                            loss_str = str(loss) if loss is not None else "N/A"
                                             
                                             print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
                                                   f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
@@ -742,18 +738,21 @@ class CarlaSimulator:
                                         except Exception as e:
                                             print(f"Error printing vehicle state: {e}")
                                         
-                                        # Debug information for ML and RL components
+                                        # Debug speed control
                                         try:
-                                            if pedestrian_in_path:
-                                                print(f"\nML Debug: Distance to pedestrian: {distance_to_pedestrian:.2f}m")
-                                                print(f"ML Debug: Available spaces: {len(available_space)}")
-                                                if available_space:
-                                                    print(f"ML Debug: Best space score: {best_score:.2f}")
-                                                print(f"RL Debug: Action: {action}, Throttle level: {throttle_level}, Steer level: {steer_level}")
-                                                print(f"RL Debug: RL Throttle: {rl_throttle:.2f}, RL Steer: {rl_steer:.2f}")
-                                                print(f"RL Debug: Final Throttle: {control.throttle:.2f}, Final Steer: {control.steer:.2f}")
+                                            print(f"\n[DEBUG] Speed Control:")
+                                            print(f"Current Speed: {vehicle_speed:.2f} km/h")
+                                            print(f"Throttle: {control.throttle:.2f}")
+                                            print(f"Brake: {control.brake:.2f}")
+                                            print(f"Vehicle Velocity: x={vehicle_velocity.x:.2f}, y={vehicle_velocity.y:.2f}, z={vehicle_velocity.z:.2f}")
+                                            
+                                            # Ensure minimum throttle for movement
+                                            if vehicle_speed < 5.0 and control.throttle < 0.3:
+                                                control.throttle = 0.3
+                                                control.brake = 0.0
+                                                print("[DEBUG] Applying minimum throttle for movement")
                                         except Exception as e:
-                                            print(f"Error printing debug information: {e}")
+                                            print(f"Error in speed control debugging: {e}")
                                         
                                         # Apply control to vehicle
                                         try:
@@ -789,7 +788,7 @@ class CarlaSimulator:
                                         except Exception as e:
                                             print(f"Error in RL training: {e}")
                                             loss = None
-                                            reward = 0.0  # Default reward value
+                                            reward = 0.0
                                         
                                         # Print RL agent status with safe formatting
                                         try:
@@ -799,14 +798,14 @@ class CarlaSimulator:
                                         
                                         # Print vehicle state with safe formatting
                                         try:
-                                            speed_str = f"{speed:.2f}" if speed is not None else "N/A"
-                                            x_str = f"{vehicle_location.x:.2f}" if vehicle_location is not None else "N/A"
-                                            y_str = f"{vehicle_location.y:.2f}" if vehicle_location is not None else "N/A"
-                                            throttle_str = f"{control.throttle:.2f}" if control is not None else "N/A"
-                                            brake_str = f"{control.brake:.2f}" if control is not None else "N/A"
-                                            steer_str = f"{control.steer:.2f}" if control is not None else "N/A"
-                                            epsilon_str = f"{self.rl_agent.epsilon:.2f}" if self.rl_agent is not None else "N/A"
-                                            loss_str = f"{loss:.4f}" if loss is not None else "N/A"
+                                            speed_str = str(speed) if speed is not None else "N/A"
+                                            x_str = str(vehicle_location.x) if vehicle_location is not None else "N/A"
+                                            y_str = str(vehicle_location.y) if vehicle_location is not None else "N/A"
+                                            throttle_str = str(control.throttle) if control is not None else "N/A"
+                                            brake_str = str(control.brake) if control is not None else "N/A"
+                                            steer_str = str(control.steer) if control is not None else "N/A"
+                                            epsilon_str = str(self.rl_agent.epsilon) if self.rl_agent is not None else "N/A"
+                                            loss_str = str(loss) if loss is not None else "N/A"
                                             
                                             print(f"\rSpeed: {speed_str} km/h, Position: ({x_str}, {y_str}), "
                                                   f"Pedestrian in path: {'Yes' if pedestrian_in_path else 'No'}, "
