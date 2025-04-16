@@ -648,7 +648,7 @@ class CarlaSimulator:
                             # Check for pedestrians in front
                             pedestrian_in_path = False
                             pedestrian_location = None
-                            distance_to_pedestrian = float('inf')  # Initialize with a large value
+                            current_pedestrian_distance = float('inf')  # Initialize with a large value
                             
                             for actor in nearby_actors.filter('walker.*'):
                                 actor_location = actor.get_location()
@@ -664,7 +664,7 @@ class CarlaSimulator:
                                     if vehicle_forward.dot(actor_direction) > 0.866:  # cos(30°)
                                         pedestrian_in_path = True
                                         pedestrian_location = actor_location
-                                        distance_to_pedestrian = distance  # Store the float distance
+                                        current_pedestrian_distance = distance  # Store the float distance
                                         break
                             
                             # Get control from traffic manager
@@ -766,7 +766,7 @@ class CarlaSimulator:
                             reward = self.rl_agent._calculate_ethical_reward(self.vehicle, self.world)
                             
                             # Additional reward for successful pedestrian avoidance
-                            if pedestrian_in_path and hasattr(self, 'distance_to_pedestrian') and self.distance_to_pedestrian > 5.0:
+                            if pedestrian_in_path and current_pedestrian_distance > 5.0:
                                 reward += 0.5  # Reward for finding a clear path around pedestrian
                             
                             total_reward += reward
