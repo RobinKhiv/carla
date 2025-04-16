@@ -314,7 +314,6 @@ class CarlaSimulator:
                                             destination = random.choice(next_waypoints).transform.location
                                             destination.z = spawn_point.location.z
                                             walker.set_location(destination)
-                                            self.pedestrians.append(walker)
                                             break
                             except Exception as e:
                                 if retry == max_retries - 1:
@@ -349,7 +348,6 @@ class CarlaSimulator:
                                             destination = random.choice(next_waypoints).transform.location
                                             destination.z = spawn_point.location.z
                                             walker.set_location(destination)
-                                            self.pedestrians.append(walker)
                                             break
                             except Exception as e:
                                 if retry == max_retries - 1:
@@ -384,13 +382,12 @@ class CarlaSimulator:
                                             destination = random.choice(next_waypoints).transform.location
                                             destination.z = spawn_point.location.z
                                             walker.set_location(destination)
-                                            self.pedestrians.append(walker)
                                             break
                             except Exception as e:
                                 if retry == max_retries - 1:
                                     print(f"Warning: Failed to spawn intersection pedestrian after {max_retries} attempts: {e}")
                 
-                print(f"Spawned {num_vehicles} vehicles and {len(self.pedestrians)} pedestrians in various scenarios")
+                print(f"Spawned {num_vehicles} vehicles and pedestrians in various scenarios")
             except Exception as e:
                 print(f"Error spawning pedestrians: {e}")
             
