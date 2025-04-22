@@ -247,7 +247,14 @@ class ObstacleAvoidance:
         
         # Get current waypoint and check lane availability
         try:
-            current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
+            # Convert numpy array to carla.Location
+            carla_location = carla.Location(
+                x=float(vehicle_location[0]),
+                y=float(vehicle_location[1]),
+                z=float(vehicle_location[2])
+            )
+            
+            current_waypoint = self.world.get_map().get_waypoint(carla_location)
             if current_waypoint:
                 # Check if we're in the leftmost lane
                 left_lane = current_waypoint.get_left_lane()
