@@ -518,8 +518,14 @@ class CarlaSimulator:
             self.traffic_manager.random_right_lanechange_percentage(self.vehicle, 100)  # Allow right lane changes
             self.traffic_manager.keep_right_rule_percentage(self.vehicle, 0)  # Disable keep right rule
             
+            # Configure traffic manager to prevent actor destruction
+            self.traffic_manager.set_global_distance_to_leading_vehicle(5.0)  # Increase following distance
+            self.traffic_manager.set_respawn_dormant_vehicles(False)  # Disable respawn of dormant vehicles
+            self.traffic_manager.set_hybrid_physics_mode(True)  # Enable hybrid physics for better control
+            
             # Main simulation loop
             self.running = True
+            last_vehicle_check = time.time()
             
             while self.running:
                 try:
@@ -528,6 +534,17 @@ class CarlaSimulator:
                     
                     # Update camera position
                     self.update_camera()
+                    
+                    # Check vehicle status periodically
+                    current_time = time.time()
+                    if current_time - last_vehicle_check > 1.0:  # Check every second
+                        if not self.vehicle.is_alive:
+                            print("Warning: Vehicle was destroyed, attempting to respawn...")
+                            if not self.spawn_vehicle():
+                                print("Error: Failed to respawn vehicle")
+                                self.running = False
+                                break
+                        last_vehicle_check = current_time
                     
                     # Get vehicle state
                     try:
@@ -662,14 +679,14 @@ class CarlaSimulator:
                                         # Handle traffic light states
                                         if light_state == carla.TrafficLightState.Red:
                                             control.throttle = 0.0
-                                            control.brake = 1.0
+                                            control.brake = 0.5  # Reduced from 1.0 to prevent sudden stops
                                         elif light_state == carla.TrafficLightState.Yellow:
                                             control.throttle = 0.0
-                                            control.brake = 0.5
+                                            control.brake = 0.3  # Reduced from 0.5
                                         elif light_state == carla.TrafficLightState.Green:
                                             # Resume normal control
                                             if speed < 5.0:
-                                                control.throttle = 0.5
+                                                control.throttle = 0.3  # Reduced from 0.5 for smoother acceleration
                                                 control.brake = 0.0
                                 except Exception as e:
                                     print(f"Error checking traffic light: {e}")
