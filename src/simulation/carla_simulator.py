@@ -611,7 +611,7 @@ class CarlaSimulator:
                                 # Get obstacle avoidance predictions
                                 try:
                                     obstacles = self.detect_obstacles()
-                                    print(f"\n[ML] Detected {len(obstacles)} obstacles")
+                                    print(f"\n[ML] Detected {len(obstacles)} obstacles (pedestrians/vehicles) within 20m")
                                     
                                     # Get ML control predictions
                                     throttle, brake, steer = self.obstacle_avoidance.predict_control(
@@ -621,7 +621,10 @@ class CarlaSimulator:
                                         obstacles,
                                         np.array([next_waypoint.transform.location.x, next_waypoint.transform.location.y, next_waypoint.transform.location.z])
                                     )
-                                    print(f"[ML] Control: throttle={throttle:.2f}, brake={brake:.2f}, steer={steer:.2f}")
+                                    print(f"[ML] Control Prediction:")
+                                    print(f"  - Throttle: {throttle:.2f} (0=no acceleration, 1=full acceleration)")
+                                    print(f"  - Brake: {brake:.2f} (0=no brake, 1=full brake)")
+                                    print(f"  - Steer: {steer:.2f} (-1=full left, 0=straight, 1=full right)")
                                 except Exception as e:
                                     print(f"Error in ML prediction: {e}")
                                 
@@ -629,8 +632,18 @@ class CarlaSimulator:
                                 try:
                                     state = self.rl_agent.get_state(self.vehicle, self.world)
                                     action = self.rl_agent.select_action(state)
-                                    print(f"[RL] State: speed={state[0]:.2f}, actors={state[1]:.2f}, traffic_light={state[2]:.2f}")
-                                    print(f"[RL] Action: {action}")
+                                    print(f"\n[RL] Environment State:")
+                                    print(f"  - Speed: {state[0]:.2f} (normalized: 0=stopped, 1=max speed)")
+                                    print(f"  - Nearby Actors: {state[1]:.2f} (normalized count of pedestrians/vehicles)")
+                                    print(f"  - Traffic Light: {state[2]:.2f} (0=red, 0.5=yellow, 1=green)")
+                                    
+                                    action_names = {
+                                        0: "ACCELERATE",
+                                        1: "BRAKE",
+                                        2: "STEER LEFT",
+                                        3: "STEER RIGHT"
+                                    }
+                                    print(f"[RL] Chosen Action: {action} ({action_names.get(action, 'UNKNOWN')})")
                                     
                                     # Train RL agent
                                     next_state = self.rl_agent.get_state(self.vehicle, self.world)
@@ -638,7 +651,7 @@ class CarlaSimulator:
                                     self.rl_agent.remember(state, action, reward, next_state, False)
                                     loss = self.rl_agent.train()
                                     if loss is not None:
-                                        print(f"[RL] Training loss: {loss:.4f}")
+                                        print(f"[RL] Training Progress: Loss = {loss:.4f} (lower is better)")
                                 except Exception as e:
                                     print(f"Error in RL agent: {e}")
                                 
