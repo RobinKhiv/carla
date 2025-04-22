@@ -26,7 +26,7 @@ class CarlaSimulator:
             self.initialized = False
             
             # Camera smoothing parameters
-            self.camera_smoothing_factor = 0.1  # Lower values = smoother movement
+            self.camera_smoothing_factor = 0.03  # Lower values = smoother movement
             self.last_camera_transform = None
             
             # Initialize reinforcement learning agent with ethical priorities
@@ -501,7 +501,7 @@ class CarlaSimulator:
             
             # Spawn traffic
             print("Spawning traffic...")
-            self.spawn_traffic(10, 50)  # Spawn 10 vehicles and 50 pedestrians
+            self.spawn_traffic(3, 20)  # Spawn 10 vehicles and 50 pedestrians
             
             # Set up camera
             if not self.setup_camera():

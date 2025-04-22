@@ -244,12 +244,76 @@ class ObstacleAvoidance:
         brake = float((output[1].item() + 1) / 2)     # Convert from [-1, 1] to [0, 1]
         steer = float(output[2].item())                # Already in [-1, 1]
         
+        # Get current waypoint and check lane availability
+        try:
+            current_waypoint = self.world.get_map().get_waypoint(vehicle_location)
+            if current_waypoint:
+                # Check if we're in the leftmost lane
+                left_lane = current_waypoint.get_left_lane()
+                right_lane = current_waypoint.get_right_lane()
+                
+                # If we're in the leftmost lane and trying to steer left, reverse the steering
+                if left_lane is None and steer < 0:
+                    print("[ML] Reversing steering direction: No left lane available")
+                    steer = -steer  # Reverse the steering direction
+                
+                # If we're in the rightmost lane and trying to steer right, reverse the steering
+                if right_lane is None and steer > 0:
+                    print("[ML] Reversing steering direction: No right lane available")
+                    steer = -steer  # Reverse the steering direction
+                
+                # If we have both lanes available, choose the one with fewer obstacles
+                if left_lane and right_lane:
+                    left_obstacles = sum(1 for _, dist, _ in obstacles if dist < 20.0 and 
+                                       self._is_obstacle_on_left(vehicle_location, vehicle_rotation, _))
+                    right_obstacles = sum(1 for _, dist, _ in obstacles if dist < 20.0 and 
+                                        self._is_obstacle_on_right(vehicle_location, vehicle_rotation, _))
+                    
+                    if left_obstacles < right_obstacles and steer > 0:
+                        print("[ML] Choosing left lane: Fewer obstacles")
+                        steer = -abs(steer)  # Steer left
+                    elif right_obstacles < left_obstacles and steer < 0:
+                        print("[ML] Choosing right lane: Fewer obstacles")
+                        steer = abs(steer)  # Steer right
+        except Exception as e:
+            print(f"Error checking lane availability: {e}")
+        
         # Clip values to ensure they're within valid ranges
         throttle = max(0.0, min(1.0, throttle))
         brake = max(0.0, min(1.0, brake))
         steer = max(-1.0, min(1.0, steer))
         
         return throttle, brake, steer
+    
+    def _is_obstacle_on_left(self, vehicle_location: np.ndarray, vehicle_rotation: np.ndarray, 
+                            obstacle_location: np.ndarray) -> bool:
+        """Check if an obstacle is on the left side of the vehicle."""
+        vehicle_forward = np.array([
+            math.cos(math.radians(vehicle_rotation[1])),
+            math.sin(math.radians(vehicle_rotation[1])),
+            0
+        ])
+        vehicle_right = np.array([-vehicle_forward[1], vehicle_forward[0], 0])
+        
+        obstacle_direction = obstacle_location - vehicle_location
+        obstacle_direction = obstacle_direction / np.linalg.norm(obstacle_direction)
+        
+        return np.dot(obstacle_direction, vehicle_right) > 0
+    
+    def _is_obstacle_on_right(self, vehicle_location: np.ndarray, vehicle_rotation: np.ndarray, 
+                             obstacle_location: np.ndarray) -> bool:
+        """Check if an obstacle is on the right side of the vehicle."""
+        vehicle_forward = np.array([
+            math.cos(math.radians(vehicle_rotation[1])),
+            math.sin(math.radians(vehicle_rotation[1])),
+            0
+        ])
+        vehicle_right = np.array([-vehicle_forward[1], vehicle_forward[0], 0])
+        
+        obstacle_direction = obstacle_location - vehicle_location
+        obstacle_direction = obstacle_direction / np.linalg.norm(obstacle_direction)
+        
+        return np.dot(obstacle_direction, vehicle_right) < 0
     
     def evaluate_space(self, space_location: np.ndarray, vehicle_speed: float, 
                       obstacles: List[Tuple[np.ndarray, float, str]]) -> bool:
