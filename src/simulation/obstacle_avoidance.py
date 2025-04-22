@@ -296,12 +296,17 @@ class ObstacleAvoidance:
     def _is_obstacle_on_left(self, vehicle_location: np.ndarray, vehicle_rotation: np.ndarray, 
                             obstacle_location: np.ndarray) -> bool:
         """Check if an obstacle is on the left side of the vehicle."""
+        # Convert all inputs to float64 numpy arrays
+        vehicle_location = vehicle_location.astype(np.float64)
+        vehicle_rotation = vehicle_rotation.astype(np.float64)
+        obstacle_location = obstacle_location.astype(np.float64)
+        
         vehicle_forward = np.array([
             math.cos(math.radians(vehicle_rotation[1])),
             math.sin(math.radians(vehicle_rotation[1])),
             0
-        ])
-        vehicle_right = np.array([-vehicle_forward[1], vehicle_forward[0], 0])
+        ], dtype=np.float64)
+        vehicle_right = np.array([-vehicle_forward[1], vehicle_forward[0], 0], dtype=np.float64)
         
         obstacle_direction = obstacle_location - vehicle_location
         obstacle_direction = obstacle_direction / np.linalg.norm(obstacle_direction)
@@ -311,12 +316,17 @@ class ObstacleAvoidance:
     def _is_obstacle_on_right(self, vehicle_location: np.ndarray, vehicle_rotation: np.ndarray, 
                              obstacle_location: np.ndarray) -> bool:
         """Check if an obstacle is on the right side of the vehicle."""
+        # Convert all inputs to float64 numpy arrays
+        vehicle_location = vehicle_location.astype(np.float64)
+        vehicle_rotation = vehicle_rotation.astype(np.float64)
+        obstacle_location = obstacle_location.astype(np.float64)
+        
         vehicle_forward = np.array([
             math.cos(math.radians(vehicle_rotation[1])),
             math.sin(math.radians(vehicle_rotation[1])),
             0
-        ])
-        vehicle_right = np.array([-vehicle_forward[1], vehicle_forward[0], 0])
+        ], dtype=np.float64)
+        vehicle_right = np.array([-vehicle_forward[1], vehicle_forward[0], 0], dtype=np.float64)
         
         obstacle_direction = obstacle_location - vehicle_location
         obstacle_direction = obstacle_direction / np.linalg.norm(obstacle_direction)

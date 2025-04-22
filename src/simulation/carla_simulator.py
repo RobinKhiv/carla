@@ -445,6 +445,27 @@ class CarlaSimulator:
         # Get all actors in the world
         actors = self.world.get_actors()
         
+        # Check for pedestrians first
+        pedestrians = actors.filter('walker.*')
+        print(f"\n[DEBUG] Total pedestrians in world: {len(pedestrians)}")
+        
+        for actor in pedestrians:
+            actor_location = actor.get_location()
+            distance = vehicle_location.distance(actor_location)
+            
+            # Only consider pedestrians in front of us
+            vehicle_forward = vehicle_transform.get_forward_vector()
+            actor_direction = actor_location - vehicle_location
+            actor_direction = actor_direction.make_unit_vector()
+            
+            if vehicle_forward.dot(actor_direction) > 0.5:  # Only consider if in front
+                print(f"[DEBUG] Found pedestrian at {distance:.1f}m away")
+                obstacles.append((
+                    np.array([actor_location.x, actor_location.y, actor_location.z]),
+                    distance,
+                    'pedestrian'
+                ))
+        
         # Check for vehicles
         for actor in actors.filter('vehicle.*'):
             if actor.id != self.vehicle.id:  # Skip ego vehicle
@@ -463,23 +484,7 @@ class CarlaSimulator:
                         'vehicle'
                     ))
         
-        # Check for pedestrians
-        for actor in actors.filter('walker.*'):
-            actor_location = actor.get_location()
-            distance = vehicle_location.distance(actor_location)
-            
-            # Only consider pedestrians in front of us
-            vehicle_forward = vehicle_transform.get_forward_vector()
-            actor_direction = actor_location - vehicle_location
-            actor_direction = actor_direction.make_unit_vector()
-            
-            if vehicle_forward.dot(actor_direction) > 0.5:  # Only consider if in front
-                obstacles.append((
-                    np.array([actor_location.x, actor_location.y, actor_location.z]),
-                    distance,
-                    'pedestrian'
-                ))
-        
+        print(f"[DEBUG] Total obstacles detected: {len(obstacles)}")
         return obstacles
 
     def run(self):
