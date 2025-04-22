@@ -23,11 +23,12 @@ class ObstacleAvoidanceModel(nn.Module):
         return x
 
 class ObstacleAvoidance:
-    def __init__(self):
+    def __init__(self, world=None):
         self.model = ObstacleAvoidanceModel()
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
         self.criterion = nn.MSELoss()
         self.experience_buffer = []
+        self.world = world  # Store the world reference
         self._initialize_models()
         
     def _initialize_models(self):
