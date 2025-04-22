@@ -25,6 +25,10 @@ class CarlaSimulator:
             self.traffic_manager = None
             self.initialized = False
             
+            # Camera smoothing parameters
+            self.camera_smoothing_factor = 0.1  # Lower values = smoother movement
+            self.last_camera_transform = None
+            
             # Initialize reinforcement learning agent with ethical priorities
             ethical_priorities = EthicalPriorities(
                 pedestrian_weight=1.0,  # High priority for pedestrian safety
@@ -203,28 +207,57 @@ class CarlaSimulator:
             return False
 
     def update_camera(self):
-        """Update camera position and orientation"""
+        """Update camera position and orientation with smooth movement"""
         if self.vehicle and self.spectator:
             try:
                 # Get vehicle transform
                 vehicle_transform = self.vehicle.get_transform()
                 
-                # Calculate camera position (behind and above the vehicle)
-                camera_location = carla.Location(
+                # Calculate target camera position (behind and above the vehicle)
+                target_location = carla.Location(
                     x=vehicle_transform.location.x - 10.0 * math.cos(math.radians(vehicle_transform.rotation.yaw)),
                     y=vehicle_transform.location.y - 10.0 * math.sin(math.radians(vehicle_transform.rotation.yaw)),
                     z=vehicle_transform.location.z + 5.0
                 )
                 
-                # Calculate camera rotation (looking at vehicle)
-                camera_rotation = carla.Rotation(
+                # Calculate target camera rotation (looking at vehicle)
+                target_rotation = carla.Rotation(
                     pitch=-15.0,
                     yaw=vehicle_transform.rotation.yaw,
                     roll=0.0
                 )
                 
-                # Set camera transform
-                self.spectator.set_transform(carla.Transform(camera_location, camera_rotation))
+                # Create target transform
+                target_transform = carla.Transform(target_location, target_rotation)
+                
+                # If this is the first update, set the camera directly
+                if self.last_camera_transform is None:
+                    self.spectator.set_transform(target_transform)
+                    self.last_camera_transform = target_transform
+                    return
+                
+                # Interpolate between current and target position
+                current_location = self.last_camera_transform.location
+                current_rotation = self.last_camera_transform.rotation
+                
+                # Smooth position interpolation
+                new_location = carla.Location(
+                    x=current_location.x + (target_location.x - current_location.x) * self.camera_smoothing_factor,
+                    y=current_location.y + (target_location.y - current_location.y) * self.camera_smoothing_factor,
+                    z=current_location.z + (target_location.z - current_location.z) * self.camera_smoothing_factor
+                )
+                
+                # Smooth rotation interpolation
+                new_rotation = carla.Rotation(
+                    pitch=current_rotation.pitch + (target_rotation.pitch - current_rotation.pitch) * self.camera_smoothing_factor,
+                    yaw=current_rotation.yaw + (target_rotation.yaw - current_rotation.yaw) * self.camera_smoothing_factor,
+                    roll=current_rotation.roll + (target_rotation.roll - current_rotation.roll) * self.camera_smoothing_factor
+                )
+                
+                # Set new camera transform
+                new_transform = carla.Transform(new_location, new_rotation)
+                self.spectator.set_transform(new_transform)
+                self.last_camera_transform = new_transform
                 
             except Exception as e:
                 print(f"Error updating camera: {e}")
