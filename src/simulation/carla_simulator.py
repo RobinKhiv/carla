@@ -640,6 +640,13 @@ class CarlaSimulator:
                                     state = self.rl_agent.get_state(self.vehicle, self.world)
                                     action = self.rl_agent.select_action(state)
                                     
+                                    action_names = {
+                                        0: "ACCELERATE",
+                                        1: "BRAKE",
+                                        2: "STEER LEFT",
+                                        3: "STEER RIGHT"
+                                    }
+                                    
                                     if pedestrians:
                                         print(f"[RL DECISION] High-level action: {action_names.get(action, 'UNKNOWN')}")
                                     
