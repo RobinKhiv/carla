@@ -501,7 +501,7 @@ class CarlaSimulator:
             
             # Spawn traffic
             print("Spawning traffic...")
-            self.spawn_traffic(3, 20)  # Spawn 10 vehicles and 50 pedestrians
+            self.spawn_traffic(3, 40)  # Spawn 10 vehicles and 50 pedestrians
             
             # Set up camera
             if not self.setup_camera():
